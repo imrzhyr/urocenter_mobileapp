@@ -188,7 +188,7 @@ class _GradientPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final random = Random(); // For potential future use (e.g., jitter)
+    // final random = Random(); // Removed unused local variable
 
     for (int i = 0; i < colors.length; i++) {
       final paint = Paint()

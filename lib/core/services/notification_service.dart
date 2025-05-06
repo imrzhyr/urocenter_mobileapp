@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart'; // Removed unused import
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/notification_model.dart';
@@ -11,12 +11,12 @@ import 'package:urocenter/core/utils/logger.dart';
 class NotificationService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
-  final Ref? _ref;
+  // final Ref? _ref; // Removed unused field
 
   StreamSubscription? _notificationSubscription;
   
   /// Constructor
-  NotificationService(this._firestore, this._auth, [this._ref]);
+  NotificationService(this._firestore, this._auth);
 
   /// Get the current user ID or null if not logged in
   String? get _currentUserId => _auth.currentUser?.uid;

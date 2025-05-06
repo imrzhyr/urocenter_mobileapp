@@ -233,14 +233,10 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
         name: RouteNames.verification,
         pageBuilder: (context, state) {
           String? phoneNumber;
-          String? verificationId;
-          int? resendToken;
           
           if (state.extra is Map) {
             final extraMap = state.extra as Map;
             phoneNumber = extraMap['phoneNumber'] as String?;
-            verificationId = extraMap['verificationId'] as String?;
-            resendToken = extraMap['resendToken'] as int?;
           } else if (state.extra is String) {
             phoneNumber = state.extra as String?;
             AppLogger.w("Warning: Navigating to verification with only phone number string. Verification ID might be missing.");
@@ -480,24 +476,4 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
       ),
     ),
   );
-}
-
-/// Check if the user is authenticated
-bool _isAuthenticated() {
-  return false; 
-}
-
-/// Check if the user needs to complete onboarding
-bool _needsOnboarding() {
-  return false;
-}
-
-/// Check if the user is an admin
-bool _isAdmin() {
-  return false;
-}
-
-/// Get the current onboarding step
-String _getCurrentOnboardingStep() {
-  return 'profile_setup';
 }

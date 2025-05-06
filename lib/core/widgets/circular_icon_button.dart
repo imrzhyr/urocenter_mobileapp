@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
+// import '../theme/app_colors.dart'; // Removed unused import
 import '../utils/haptic_utils.dart';
 
 /// A simple circular button with an icon, background, and tap feedback.

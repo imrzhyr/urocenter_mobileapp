@@ -242,9 +242,13 @@ class ChatService {
       // This helps the browser/app handle the file correctly on download
       // Determine content type based on extension (can be more sophisticated)
       String? contentType;
-      if (extension == 'pdf') contentType = 'application/pdf';
-      else if (extension == 'doc') contentType = 'application/msword';
-      else if (extension == 'docx') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (extension == 'pdf') {
+        contentType = 'application/pdf';
+      } else if (extension == 'doc') {
+        contentType = 'application/msword';
+      } else if (extension == 'docx') {
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      }
       // Add more types as needed (txt, xls, etc.)
 
       SettableMetadata? metadata = contentType != null ? SettableMetadata(contentType: contentType) : null;

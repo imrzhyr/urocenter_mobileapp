@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart'; // Removed unused import
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Types of notifications in the app

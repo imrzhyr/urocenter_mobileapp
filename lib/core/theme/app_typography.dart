@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+// import 'app_colors.dart'; // Removed unused import
 
 /// Defines the text styles used throughout the app
 class AppTypography {

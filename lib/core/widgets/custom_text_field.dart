@@ -173,7 +173,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
               fontWeight: FontWeight.w500,
             ),
             decoration: InputDecoration(
-              hintText: widget.hint ?? widget.label,
+              hintText: widget.hint,
               counter: const SizedBox.shrink(),
               contentPadding: widget.contentPadding ?? 
                   const EdgeInsets.symmetric(vertical: 16, horizontal: 20),

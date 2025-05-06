@@ -113,7 +113,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         (Set<WidgetState> states) {
                           if (states.contains(WidgetState.selected)) {
                             return const Icon(Icons.notifications_active);
-                          }
+                         }
                           return const Icon(Icons.notifications_off);
                         },
                       ),
@@ -162,7 +162,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         (Set<WidgetState> states) {
                           if (states.contains(WidgetState.selected)) {
                             return const Icon(Icons.dark_mode);
-                          }
+                         }
                           return const Icon(Icons.light_mode);
                         },
                       ),

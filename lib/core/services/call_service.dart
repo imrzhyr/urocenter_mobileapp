@@ -45,15 +45,12 @@ final incomingCallProvider = StateNotifierProvider<IncomingCallNotifier, Incomin
 
 class CallService {
   final FirebaseFirestore _firestore;
-  final FirebaseAuth _auth;
-  // <<< Add Ref to read/update other providers >>>
   final Ref _ref; 
 
   // Listener subscription - needs to be managed
   StreamSubscription? _callSubscription;
 
-  // <<< Update constructor to accept Ref >>>
-  CallService(this._firestore, this._auth, this._ref);
+  CallService(this._firestore, this._ref);
 
   // Method to start listening for calls
   void listenForIncomingCalls(String userId) {
@@ -210,7 +207,5 @@ class CallService {
 // Provider for the CallService itself
 final callServiceProvider = Provider<CallService>((ref) {
   final firestore = FirebaseFirestore.instance;
-  final auth = FirebaseAuth.instance;
-  // <<< Pass Ref to the service constructor >>>
-  return CallService(firestore, auth, ref); 
+  return CallService(firestore, ref);
 }); 

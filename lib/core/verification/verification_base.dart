@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/theme.dart';
-import '../widgets/widgets.dart';
+// import '../widgets/widgets.dart'; // Removed unused import
 import '../utils/utils.dart';
 
 /// Base verification state and logic to be shared across different verification screens

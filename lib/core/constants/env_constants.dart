@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+// import 'package:flutter/foundation.dart'; // Removed unused import
+// import 'package:flutter_dotenv/flutter_dotenv.dart'; // Removed unused import
 
 /// Environment constants for the app
 class EnvConstants {

@@ -346,7 +346,7 @@ class _PhoneVerificationScreenState extends ConsumerState<PhoneVerificationScree
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-
+    
     return AppScaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(

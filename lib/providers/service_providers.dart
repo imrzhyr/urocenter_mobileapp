@@ -53,7 +53,7 @@ final storageServiceProvider = Provider<StorageService>((ref) => StorageService(
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   final firestore = ref.watch(firestoreProvider);
   final auth = ref.watch(firebaseAuthProvider);
-  return NotificationService(firestore, auth, ref);
+  return NotificationService(firestore, auth);
 });
 
 /// Provider for streaming notifications

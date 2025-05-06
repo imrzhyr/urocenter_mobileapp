@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/theme.dart';
+// import '../theme/theme.dart'; // Removed unused import
 
 /// An animated pulsing button that provides visual feedback on hover and press
 class PulseButton extends StatefulWidget {

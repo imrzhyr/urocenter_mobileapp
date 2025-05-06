@@ -249,24 +249,24 @@ class _AdminConsultationsScreenState extends ConsumerState<AdminConsultationsScr
               child: FadeInAnimation(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-                  child: TextField(
-                    controller: _searchController,
-                    style: TextStyle(color: theme.colorScheme.onSurface),
-                    decoration: InputDecoration(
-                      hintText: 'Search consultations...'.tr(),
-                      hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                      prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: Icon(Icons.clear, color: theme.colorScheme.onSurfaceVariant),
-                              onPressed: () {
-                                HapticUtils.lightTap();
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      style: TextStyle(color: theme.colorScheme.onSurface),
+                      decoration: InputDecoration(
+                        hintText: 'Search consultations...'.tr(),
+                        hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(Icons.clear, color: theme.colorScheme.onSurfaceVariant),
+                                onPressed: () {
+                                  HapticUtils.lightTap();
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                      ),
                     onChanged: (value) {
                       setState(() {
                         _searchQuery = value;

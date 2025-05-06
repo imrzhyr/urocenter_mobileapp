@@ -3,8 +3,6 @@ import 'logger.dart';
 
 /// Error handler utility
 class ErrorHandler {
-  static final Logger _logger = Logger();
-  
   /// Handle error and return user-friendly message
   static String handleError(dynamic error) {
     AppLogger.e('An error occurred', error);

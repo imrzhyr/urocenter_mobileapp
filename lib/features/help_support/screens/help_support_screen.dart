@@ -152,58 +152,58 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> {
           width: double.infinity,
           child: Card(
             margin: EdgeInsets.zero,
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                _buildContactTile(
-                  theme,
-                  icon: Icons.phone,
-                  title: 'help_support.call_us'.tr(),
-                  subtitle: '+964 750 123 4567',
-                  onTap: () {
-                    // Just show a snackbar instead of launching URL
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Calling support...'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
-                Divider(height: 1, color: theme.dividerColor),
-                _buildContactTile(
-                  theme,
-                  icon: Icons.email,
-                  title: 'help_support.email_us'.tr(),
-                  subtitle: 'support@urocenter.com',
-                  onTap: () {
-                    // Just show a snackbar instead of launching URL
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Opening email...'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
-                Divider(height: 1, color: theme.dividerColor),
-                _buildContactTile(
-                  theme,
-                  icon: Icons.chat_bubble_outline,
-                  title: 'help_support.chat_with_us'.tr(),
-                  subtitle: 'help_support.chat_description'.tr(),
-                  onTap: () {
-                    // Start a support chat
-                    HapticUtils.lightTap();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Starting support chat...'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
-              ],
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _buildContactTile(
+                theme,
+                icon: Icons.phone,
+                title: 'help_support.call_us'.tr(),
+                subtitle: '+964 750 123 4567',
+                onTap: () {
+                  // Just show a snackbar instead of launching URL
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Calling support...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              Divider(height: 1, color: theme.dividerColor),
+              _buildContactTile(
+                theme,
+                icon: Icons.email,
+                title: 'help_support.email_us'.tr(),
+                subtitle: 'support@urocenter.com',
+                onTap: () {
+                  // Just show a snackbar instead of launching URL
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Opening email...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              Divider(height: 1, color: theme.dividerColor),
+              _buildContactTile(
+                theme,
+                icon: Icons.chat_bubble_outline,
+                title: 'help_support.chat_with_us'.tr(),
+                subtitle: 'help_support.chat_description'.tr(),
+                onTap: () {
+                  // Start a support chat
+                  HapticUtils.lightTap();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Starting support chat...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ],
             ),
           ),
         ),
@@ -287,71 +287,71 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> {
           width: double.infinity,
           child: Card(
             margin: EdgeInsets.zero,
-            clipBehavior: Clip.antiAlias,
-            child: ExpansionPanelList(
-              elevation: 0,
-              expandedHeaderPadding: EdgeInsets.zero,
-              expansionCallback: (index, isExpanded) {
-                setState(() {
-                  for (int i = 0; i < _faqItems.length; i++) {
-                    if (i == index) {
-                      _faqItems[i].isExpanded = !_faqItems[i].isExpanded;
-                    } else {
-                      _faqItems[i].isExpanded = false;
-                    }
+          clipBehavior: Clip.antiAlias,
+          child: ExpansionPanelList(
+            elevation: 0,
+            expandedHeaderPadding: EdgeInsets.zero,
+            expansionCallback: (index, isExpanded) {
+              setState(() {
+                for (int i = 0; i < _faqItems.length; i++) {
+                  if (i == index) {
+                    _faqItems[i].isExpanded = !_faqItems[i].isExpanded;
+                  } else {
+                    _faqItems[i].isExpanded = false;
                   }
-                });
-                HapticUtils.lightTap();
+                }
+              });
+              HapticUtils.lightTap();
 
-                if (_faqItems[index].isExpanded) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_faqItems[index].isExpanded) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
                     final key = _faqItems[index].itemKey;
                     final context = key.currentContext;
                     if (context != null && _scrollController.hasClients) {
                       Scrollable.ensureVisible(
                         context,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
                         alignment: 0.0, // Align to the top of the viewport
                         // alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart, // Alternative alignment
-                      );
-                    }
-                  });
-                }
-              },
-              children: _faqItems.map((FAQItem item) {
-                return ExpansionPanel(
-                  headerBuilder: (BuildContext context, bool isExpanded) {
+                    );
+                  }
+                });
+              }
+            },
+            children: _faqItems.map((FAQItem item) {
+              return ExpansionPanel(
+                headerBuilder: (BuildContext context, bool isExpanded) {
                     return Container(
                       key: item.itemKey,
                       child: ListTile(
-                        title: Text(
-                          item.question,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    title: Text(
+                      item.question,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
                           ),
-                        ),
                       ),
-                    );
-                  },
-                  body: Padding(
-                    padding: const EdgeInsets.only(
-                      left: 16.0,
-                      right: 16.0,
-                      bottom: 16.0,
                     ),
-                    child: Text(
-                      item.answer,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                  );
+                },
+                body: Padding(
+                  padding: const EdgeInsets.only(
+                    left: 16.0,
+                    right: 16.0,
+                    bottom: 16.0,
+                  ),
+                  child: Text(
+                    item.answer,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  isExpanded: item.isExpanded,
-                  backgroundColor: theme.colorScheme.surface,
-                  canTapOnHeader: true,
-                );
-              }).toList(),
+                ),
+                isExpanded: item.isExpanded,
+                backgroundColor: theme.colorScheme.surface,
+                canTapOnHeader: true,
+              );
+            }).toList(),
             ),
           ),
         ),
