@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>accountId</key>
+    <string>YOUR_ACCOUNT_ID</string>
+    <key>clientSecret</key>
+    <string>YOUR_CLIENT_SECRET</string>
+    <key>clientId</key>
+    <string>YOUR_CLIENT_ID</string>
+    <key>grantType</key>
+    <string>client_credentials</string>
+    <key>baseURLs</key>
+    <dict>
+        <key>fibPayGate</key>
+        <string>https://fib.stage.fib.iq</string>
+    </dict>
+</dict>
+</plist> 
