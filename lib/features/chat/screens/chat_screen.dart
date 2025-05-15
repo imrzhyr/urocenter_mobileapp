@@ -44,6 +44,7 @@ import '../../../core/utils/haptic_utils.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/widgets/circular_loading_indicator.dart';
 import 'fullscreen_image_viewer.dart'; // <<< ADD CORRECT IMPORT
+import 'package:url_launcher/url_launcher.dart'; // <<< ADD url_launcher import
 
 // --- Revised Patient Onboarding Data Model ---
 // Reflects data explicitly gathered in ProfileSetup, MedicalHistory, DocumentUpload screens
@@ -163,25 +164,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     // Process extra data from router
     _processExtraData();
 
-    // TODO: Determine if the current user is an admin and set _isAdmin
-    // This needs actual implementation based on your auth/user role system.
-    // Example Placeholder (replace with real logic):
-    // _isAdmin = AuthService.currentUserIsAdmin; 
-    // Or, if role info is passed via navigation:
-    // _isAdmin = widget.extraData?['currentUserRole'] == 'admin';
-    // REMOVED incorrect placeholder logic below:
-    // if (!_displayPartnerName.startsWith("Dr.")) {
-    //    _isAdmin = true; 
-    // }
-    // _isAdmin will remain false by default for users accessing from UserDashboard
+    // _fetchCurrentUserAdminStatus() handles admin status determination.
+    // Cleaning up previous comments and placeholder logic.
 
     _initializeRecorder();
     _subscribeToMessages(); // <<< CALL new subscription method
     // <<< ADD call to subscribe to chat status >>>
     _subscribeToChatStatus();
     
-    // Check if intro should be shown *after* processing extra data
-    _checkAndShowIntro(); 
+    // Check if intro should be shown *after* processing extra data and admin status
+    // _checkAndShowIntro() is called after _fetchCurrentUserAdminStatus completes.
     
     // Listen to text controller changes to toggle send/mic button
     _messageController.addListener(() {
@@ -190,8 +182,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       }
     });
     
-    // <<< ADD: Fetch Admin Status >>>
-    _fetchCurrentUserAdminStatus();
+    // <<< ADD: Fetch Admin Status & then Check/Show Intro >>>
+    _fetchCurrentUserAdminStatus().then((_) {
+      // Now that _isAdmin is set, call _checkAndShowIntro
+      if (mounted) { // Ensure widget is still mounted after async gap
+        _checkAndShowIntro();
+      }
+    });
     
     // <<< ADD: Update currently viewed chat ID >>>
     final chatId = _generateChatId(FirebaseAuth.instance.currentUser?.uid ?? '', _chatPartnerId);
@@ -208,32 +205,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
   // <<< ADD: Method to fetch admin status >>>
   Future<void> _fetchCurrentUserAdminStatus() async {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId == null) return; // Should not happen if logged in
+    if (currentUserId == null) {
+      if (mounted) setState(() => _isAdmin = false); // Default to false if no user
+      return;
+    }
 
     try {
       final profileService = ref.read(userProfileServiceProvider);
       final profileMap = await profileService.getUserProfile(currentUserId);
       if (mounted && profileMap != null) {
-        // <<< Use UserModel alias >>>
         final currentUserProfile = UserModel.User.fromMap(profileMap); 
         setState(() {
           _isAdmin = currentUserProfile.isAdmin;
         });
-        AppLogger.d("[DEBUG] Current user admin status: $_isAdmin");
+        AppLogger.d("[DEBUG] Current user admin status set: $_isAdmin");
+      } else if (mounted) {
+        setState(() => _isAdmin = false); // Default if profile not found
       }
     } catch (e) {
       AppLogger.e("Error fetching current user profile for admin check: $e");
-      // Keep _isAdmin as false on error
+      if (mounted) setState(() => _isAdmin = false); // Default on error
     }
   }
 
   void _processExtraData() {
      if (widget.extraData is Map) {
       final Map data = widget.extraData as Map;
-      // <<< Use CORRECT keys from AdminConsultationsScreen >>>
-      _chatPartnerId = data['otherUserId'] ?? _chatPartnerId; // Use 'otherUserId'
-      _displayPartnerName = data['otherUserName'] ?? widget.doctorName ?? _displayPartnerName; // Use 'otherUserName'
-      // _displayPartnerTitle = data['doctorTitle'] ?? widget.doctorTitle ?? _displayPartnerTitle; // Comment out - Not passed
+      _chatPartnerId = data['otherUserId'] ?? _chatPartnerId; 
+      _displayPartnerName = data['otherUserName'] ?? widget.doctorName ?? _displayPartnerName; 
       AppLogger.d('[DEBUG] Processed Extra Data - Partner ID: $_chatPartnerId, Name: $_displayPartnerName');
     } else {
        _displayPartnerName = widget.doctorName ?? _displayPartnerName;
@@ -242,43 +241,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     }
   }
 
+  // Corrected _checkAndShowIntro method
   Future<void> _checkAndShowIntro() async {
-    AppLogger.d('[DEBUG] _checkAndShowIntro called for $_chatPartnerId');
-    if (_chatPartnerId != 'default_partner') { 
-      final prefs = await SharedPreferences.getInstance();
-      final introViewedKey = 'viewedIntro_$_chatPartnerId';
-      final bool hasViewedIntro = prefs.getBool(introViewedKey) ?? false;
-
-      AppLogger.d('[DEBUG] Intro viewed flag for $introViewedKey: $hasViewedIntro');
-
-      if (!hasViewedIntro) {
-        setState(() {
-          _shouldShowIntro = true;
-        });
-        AppLogger.d('[DEBUG] Fetching patient data because intro not viewed...');
+    AppLogger.d('[DEBUG] _checkAndShowIntro called for $_chatPartnerId. Current user isAdmin: $_isAdmin');
+    if (_chatPartnerId != 'default_partner') {
+      if (_isAdmin) { // Current user is ADMIN
         await _fetchPatientData(); 
-        AppLogger.d('[DEBUG] Patient data fetched. _patientData is null? ${(_patientData == null)}');
-        
-        if (_patientData != null && mounted && _shouldShowIntro) {
-          AppLogger.d('[DEBUG] Conditions met. Starting intro animation for $_chatPartnerId');
+        AppLogger.d('[DEBUG] Admin viewing: Patient data fetched for $_chatPartnerId. _patientData is null? ${(_patientData == null)}');
+
+        final prefs = await SharedPreferences.getInstance();
+        final introViewedKey = 'viewedIntro_$_chatPartnerId';
+        final bool hasViewedIntro = prefs.getBool(introViewedKey) ?? false;
+        AppLogger.d('[DEBUG] Admin viewing: Intro viewed flag for $introViewedKey: $hasViewedIntro');
+
+        if (!hasViewedIntro && _patientData != null && mounted) {
+          AppLogger.d('[DEBUG] Admin viewing. Conditions met to show patient intro animation for $_chatPartnerId');
           setState(() {
-             _introIsVisible = true; 
+            _shouldShowIntro = true; 
+            _introIsVisible = true;
           });
           _introController.forward();
-          await prefs.setBool(introViewedKey, true); 
-          AppLogger.d('[DEBUG] Marked intro as viewed for $introViewedKey');
-        } else {
-           AppLogger.d('[DEBUG] Conditions NOT met for showing intro. _patientData: ${_patientData?.name}, mounted: $mounted, _shouldShowIntro: $_shouldShowIntro');
+          await prefs.setBool(introViewedKey, true);
+          AppLogger.d('[DEBUG] Marked intro as viewed for $introViewedKey by admin');
+        } else if (hasViewedIntro) { // Admin has viewed intro before
+           AppLogger.d('[DEBUG] Admin viewing. Intro already viewed for $_chatPartnerId. Data fetched for info button.');
+        } else { // Other conditions not met for admin (e.g. _patientData is null)
+           AppLogger.d('[DEBUG] Admin viewing. Conditions NOT met for showing intro. _patientData: ${_patientData?.name}, mounted: $mounted');
         }
-      } else {
-         AppLogger.i('[DEBUG] Intro already viewed. Fetching data for info button...');
-         await _fetchPatientData();
+      } else { // Current user is PATIENT
+        AppLogger.d('[DEBUG] Patient viewing. Patient Introduction card for doctor will not be shown. Skipping _fetchPatientData for intro purposes.');
+        // Ensure intro is not visible if patient is viewing
+        if (mounted && (_shouldShowIntro || _introIsVisible)) {
+          setState(() {
+            _shouldShowIntro = false;
+            _introIsVisible = false;
+          });
+        }
       }
-    } else {
-       AppLogger.d('[DEBUG] Default partner ID. Fetching default data...');
-       await _fetchPatientData();
+    } else { // _chatPartnerId IS 'default_partner'
+       AppLogger.d('[DEBUG] Default partner ID. Intro card won\'t show (unless admin needs data for info btn).');
+       // If _isAdmin and _chatPartnerId is 'default_partner', _fetchPatientData might still be relevant
+       // for the info button, assuming 'default_partner' could resolve to some entity.
+       // If not, this fetch might be optimized further. For now, keeping it for admin.
+       if (_isAdmin) {
+           await _fetchPatientData();
+           AppLogger.d('[DEBUG] Admin viewing default_partner. Data fetched: ${_patientData != null}');
+       }
     }
   }
+  // END Corrected _checkAndShowIntro method
 
   // <<< Modify to fetch REAL patient data >>>
   Future<void> _fetchPatientData() async {
@@ -1960,10 +1971,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
                    return ActionChip(
                        avatar: Icon(docIcon, size: 16, color: chipForegroundColor), // <<< Use themed color
                        label: Text(itemName, style: TextStyle(color: chipForegroundColor)), // <<< Use themed color
-                       onPressed: () {
-                         // TODO: Implement document view logic for non-images (using itemUrl)
-                         AppLogger.d('Tapped on document: $itemName - URL: $itemUrl');
-                         // Potentially open with url_launcher or a specific PDF viewer
+                       onPressed: () async { // <<< Make async and implement >>>
+                         HapticUtils.lightTap(); // Add haptics
+                         AppLogger.d('Tapped on document chip: $itemName - URL: $itemUrl');
+                         if (itemUrl != null) {
+                           final Uri? uri = Uri.tryParse(itemUrl);
+                           if (uri != null) {
+                             try {
+                               if (await canLaunchUrl(uri)) {
+                                 await launchUrl(
+                                   uri,
+                                   mode: LaunchMode.externalApplication, // Try to open in external app
+                                 );
+                               } else {
+                                  AppLogger.w('Could not launch URL: $uri');
+                                  if (context.mounted) { // Check context validity
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Could not open document: $itemName')), // TODO: Localize
+                                    );
+                                  }
+                               }
+                             } catch (e) {
+                                AppLogger.e('Error launching URL $uri: $e');
+                                if (context.mounted) { // Check context validity
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error opening document: $itemName')), // TODO: Localize
+                                  );
+                                }
+                             }
+                           } else {
+                              AppLogger.w('Invalid URL format for document: $itemUrl');
+                              if (context.mounted) { // Check context validity
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Cannot open invalid link for: $itemName')), // TODO: Localize
+                                );
+                              }
+                           }
+                         } else {
+                             AppLogger.w('No URL available for document chip: $itemName');
+                         }
                        },
                        backgroundColor: chipBackgroundColor, // <<< Use themed color
                        side: BorderSide.none, // <<< Remove border
@@ -2892,30 +2938,79 @@ class _MessageBubbleState extends ConsumerState<_MessageBubble> with AutomaticKe
         } else {
           // --- Non-PDF Document Logic (Keep existing icon + filename) ---
           Widget documentDisplay = Icon(Icons.insert_drive_file_outlined, color: textColor, size: 40);
-          messageContent = Padding(
-             padding: const EdgeInsets.all(4.0), // Keep padding for this row layout
+          
+          // <<< WRAP this Padding with GestureDetector >>>
+          messageContent = GestureDetector( // <<< ADD GestureDetector >>>
+            onTap: () async { // <<< ADD onTap handler >>>
+              HapticUtils.lightTap(); 
+              final sourcePathOrUrl = widget.message.mediaUrl ?? widget.message.localFilePath;
+              AppLogger.d('Tapped on non-PDF document bubble: ${widget.message.content} - Source: $sourcePathOrUrl');
+
+              if (sourcePathOrUrl != null) {
+                final Uri? uri = Uri.tryParse(sourcePathOrUrl);
+                if (uri != null) {
+                  try {
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } else {
+                      AppLogger.w('Could not launch URL: $uri');
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Could not open document: ${widget.message.content}')), // TODO: Localize
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    AppLogger.e('Error launching URL $uri: $e');
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error opening document: ${widget.message.content}')), // TODO: Localize
+                      );
+                    }
+                  }
+                } else {
+                  AppLogger.w('Invalid URL format for document: $sourcePathOrUrl');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Cannot open invalid link for: ${widget.message.content}')), // TODO: Localize
+                    );
+                  }
+                }
+              } else {
+                AppLogger.w('No URL/Path available for document bubble: ${widget.message.content}');
+                 if (context.mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text('No link available for: ${widget.message.content}')), // TODO: Localize
+                   );
+                 }
+              }
+            }, // <<< END onTap handler >>>
+            child: Padding( // Original Padding remains as child
+             padding: const EdgeInsets.all(4.0), 
              child: Row(
-            mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+               mainAxisSize: MainAxisSize.min,
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
                   documentDisplay, 
-              const SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded( 
-                child: Padding(
-                      padding: const EdgeInsets.only(top: 4.0), 
-                  child: Text(
-                        widget.message.content, // Display filename
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 14),
-                        maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ],
-              ),
-              );
+                     child: Padding(
+                       padding: const EdgeInsets.only(top: 4.0), 
+                       child: Text(
+                         widget.message.content, // Display filename
+                         style: TextStyle(color: textColor, fontSize: 14),
+                         maxLines: 3,
+                         overflow: TextOverflow.ellipsis,
+                       ),
+                     ),
+                   ),
+                 ],
+               ),
+             ),
+          ); // <<< END GestureDetector >>>
           // --- End Non-PDF Document Logic ---
         }
         break;

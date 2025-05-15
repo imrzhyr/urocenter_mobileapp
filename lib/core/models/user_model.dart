@@ -16,6 +16,7 @@ class User {
   final String? gender;
   final double? height;
   final double? weight;
+  final String? profilePictureUrl;
   final DateTime createdAt;
   final DateTime? updatedAt;
   final Map<String, dynamic>? medicalHistory;
@@ -34,6 +35,7 @@ class User {
     this.gender,
     this.height,
     this.weight,
+    this.profilePictureUrl,
     required this.createdAt,
     this.updatedAt,
     this.medicalHistory,
@@ -54,6 +56,7 @@ class User {
     String? gender,
     double? height,
     double? weight,
+    String? profilePictureUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
     Map<String, dynamic>? medicalHistory,
@@ -72,6 +75,7 @@ class User {
       gender: gender ?? this.gender,
       height: height ?? this.height,
       weight: weight ?? this.weight,
+      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       medicalHistory: medicalHistory ?? this.medicalHistory,
@@ -94,6 +98,7 @@ class User {
       'gender': gender,
       'height': height,
       'weight': weight,
+      'profilePictureUrl': profilePictureUrl,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
       'medicalHistory': medicalHistory,
@@ -116,11 +121,12 @@ class User {
       gender: map['gender'],
       height: map['height'] != null ? (map['height'] as num).toDouble() : null,
       weight: map['weight'] != null ? (map['weight'] as num).toDouble() : null,
-      createdAt: map['createdAt'] != null 
-          ? (map['createdAt'] as Timestamp).toDate() 
+      profilePictureUrl: map['profilePictureUrl'] as String?,
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] is Timestamp ? (map['createdAt'] as Timestamp).toDate() : DateTime.parse(map['createdAt'] as String))
           : DateTime.now(),
-      updatedAt: map['updatedAt'] != null 
-          ? (map['updatedAt'] as Timestamp).toDate() 
+      updatedAt: map['updatedAt'] != null
+          ? (map['updatedAt'] is Timestamp ? (map['updatedAt'] as Timestamp).toDate() : DateTime.parse(map['updatedAt'] as String))
           : null,
       medicalHistory: map['medicalHistory'],
     );
