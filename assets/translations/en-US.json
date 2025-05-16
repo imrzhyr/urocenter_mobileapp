@@ -128,6 +128,7 @@
     "home": "Home",
     "chats": "Chats",
     "profile": "Profile",
+    "calls": "Calls",
     "welcome_back": "Welcome back,",
     "greeting_morning": "Good morning",
     "greeting_afternoon": "Good afternoon",
@@ -161,6 +162,7 @@
   },
   "documents": {
     "my_documents": "My Documents",
+    "title": "My Documents",
     "add_document": "Add Document",
     "take_photo": "Take Photo",
     "upload_photo": "Upload Photo",

@@ -146,6 +146,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
   
   // --- Track if user has manually scrolled ---
   bool _userScrolled = false;
+  // Define a threshold for determining if the user is at the bottom
+  static const double _scrollThreshold = 50.0; // 50 pixels from the bottom
   
   @override
   void initState() {
@@ -204,6 +206,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       }
     });
     // <<< END: Update currently viewed chat ID >>>
+    
+    // <<< ADD: Listen to scroll controller to detect user scrolling >>>
+     _scrollController.addListener(() {
+        if (_scrollController.hasClients) {
+          // Check if the user has scrolled up significantly
+          // In a reversed list, maxScrollExtent is the top and 0 is the bottom
+          if (_scrollController.position.pixels < _scrollController.position.maxScrollExtent - _scrollThreshold) {
+            _userScrolled = true;
+          } else {
+            _userScrolled = false; // User is back at the bottom
+          }
+        }
+     });
+    // <<< END: Listen to scroll controller >>>
   }
 
   // <<< ADD: Method to fetch admin status >>>
@@ -604,14 +620,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       (newMessages) {
         AppLogger.d("[DEBUG] Received ${newMessages.length} messages from stream for chatId: $chatId");
       if (mounted) {
+          // Check if the user was near the bottom before updating the list
+          // In a reversed list, 0 is the bottom
+          final bool wasNearBottom = _scrollController.hasClients && 
+                                     _scrollController.position.pixels <= _scrollThreshold;
+
           // <<< Update state FIRST >>>
           setState(() {
             _messages.clear(); // Clear old list
             _messages.addAll(newMessages); // Add all messages from stream
             _isLoading = false; // Stop loading once messages arrive
           });
-          // Don't use post-frame callback for initial scroll (prevents iOS animation)
-          // Initial positioning is handled by ListView.builder with reverse: true
+
+          // <<< ADD: Scroll to bottom after state update if not manually scrolled up >>>
+          // Use SchedulerBinding.instance.addPostFrameCallback to ensure layout has updated
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+             if (mounted && wasNearBottom && !_userScrolled) {
+                AppLogger.d("[DEBUG] New messages arrived, auto-scrolling to bottom.");
+                _scrollToBottom(); // Use the updated smooth scroll method
+             } else if (mounted && _userScrolled) {
+                 AppLogger.d("[DEBUG] New messages arrived, but user scrolled up. Not auto-scrolling.");
+             }
+          });
+          // <<< END: Scroll to bottom logic >>>
         }
       },
       onError: (error) {
@@ -738,20 +769,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       }
     }
 
-    // --- REMOVE Old Local Update & Fake Response ---
-    // setState(() {
-    //   _messages.add(message);
-    //   _messageController.clear();
-    // });
-    // WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    // Future.delayed(const Duration(seconds: 2), () {
-    //    if (!mounted) return;
-    //   final responseMessage = Message(...);
-    //   setState(() {
-    //     _messages.add(responseMessage);
-    //   });
-    //   WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    // });
+    // After message is sent (successfully or not), clear text field and scroll to bottom
+    _messageController.clear();
+    // Use a post-frame callback to ensure the new message widget is built before scrolling
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+         _scrollToBottom();
+      }
+    });
   }
 
   // --- Send Attachment Message --- (Modified for Upload)
@@ -761,7 +786,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     final recipientId = _chatPartnerId; 
     if (currentUserId == null) {
-      AppLogger.e("Error: Cannot send attachment, user not logged in.");
+      AppLogger.e("Error: Cannot send ${type.name}, user not logged in.");
       DialogUtils.showMessageDialog(context: context, title: 'Error', message: 'Cannot send message. Please log in.');
       return;
     }
@@ -872,21 +897,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
           });
         }
       }
+      
+      // After attachment message process (success or failure), scroll to bottom
+      // Use a post-frame callback to ensure the new message widget is built before scrolling
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+         if (mounted) {
+            _scrollToBottom();
+         }
+      });
     }
   }
 
-  // Scroll to the bottom of the list
+  // Scroll to the bottom of the list smoothly
   void _scrollToBottom() {
     if (!mounted || !_scrollController.hasClients) return;
 
-    const double targetOffsetPadding = 50.0; // Keep padding for visibility
-    final double target = _scrollController.position.maxScrollExtent + targetOffsetPadding;
-    
-    // Jump directly to the bottom without animation
-    _scrollController.jumpTo(target);
+    // With reversed ListView, the bottom is at scroll position 0
+    _scrollController.animateTo(
+      0.0, // Target scroll position 0 (bottom of reversed list)
+      duration: const Duration(milliseconds: 300), // Smooth animation duration
+      curve: Curves.easeOut, // Animation curve
+    );
+     // Reset _userScrolled flag after scrolling to the bottom
+    _userScrolled = false;
   }
 
-  // Handle keyboard appearance
+  // Handle keyboard appearance - Keep this as it is for immediate scroll on keyboard
   void _handleKeyboardAppearance() {
     if (!mounted || !_scrollController.hasClients) return;
     
@@ -900,6 +936,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+         // Reset _userScrolled flag after scrolling for keyboard
+        _userScrolled = false;
       }
     });
   }
@@ -1217,6 +1255,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
           });
         }
       }
+      
+      // After voice message process (success or failure), scroll to bottom
+      // Use a post-frame callback to ensure the new message widget is built before scrolling
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+         if (mounted) {
+            _scrollToBottom();
+         }
+      });
     }
   }
 

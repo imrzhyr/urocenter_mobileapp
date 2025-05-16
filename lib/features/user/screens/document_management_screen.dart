@@ -21,6 +21,8 @@ import '../../../core/utils/error_handler.dart'; // Import for ErrorHandler
 // Import UserProfileService provider to fetch main profile data
 import '../../../features/user/services/user_profile_service.dart'; 
 import '../../../core/widgets/circular_loading_indicator.dart';
+import '../../../core/utils/haptic_utils.dart';
+import '../../../core/widgets/app_bar_style2.dart';
 
 // No longer using typedef
 // typedef UserDocument = Map<String, dynamic>;
@@ -440,51 +442,35 @@ class _DocumentManagementScreenState extends ConsumerState<DocumentManagementScr
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+        
     return Scaffold(
-      // backgroundColor: AppColors.surface, // Use standard background // REMOVED
-      appBar: AppBar(
-        title: Text('documents.my_documents'.tr()), // Localized
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios), // Color inherited from iconTheme
-          onPressed: () => context.pop(), // Use pop for standard back
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AppBarStyle2(
+          title: 'documents.title'.tr(),
+          showSearch: false,
+          showFilters: false,
+          showBackButton: true,
+          showActionButtons: false,
         ),
       ),
-      body: Stack( // <<< WRAP with Stack >>>
-        children: [
-          RefreshIndicator( // <<< Original Body is first child >>>
-        onRefresh: () => _loadDocuments(isRefresh: true),
-        child: _buildBodyContent(),
-          ),
-          // <<< ADD Loading Overlay as second child >>>
-          if (_isUploading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withValues(alpha: 128.0), // Semi-transparent background
-                child: const Center(
-                  child: CircularLoadingIndicator(
-                    size: 40,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildDocumentsList(context),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddOptions(context), // <<< CHANGED to call bottom sheet
-        backgroundColor: AppColors.primary, 
-        child: const Icon(Icons.add, color: Colors.white),
-        tooltip: 'documents.add_document'.tr(), // Localized
+        onPressed: () {
+          HapticUtils.mediumTap();
+          _showAddOptions(context);
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }
 
   // --- Body Content Builder ---
-  Widget _buildBodyContent() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
+  Widget _buildDocumentsList(BuildContext context) {
     if (_error != null) {
       return Center(
         child: Padding(
@@ -535,7 +521,7 @@ class _DocumentManagementScreenState extends ConsumerState<DocumentManagementScr
     // <<< CHANGE ListView to GridView >>>
     return AnimationLimiter(
       child: GridView.builder(
-        padding: const EdgeInsets.all(16.0).copyWith(bottom: 80.0), // Grid padding
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         itemCount: _userDocuments.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2, // Two columns

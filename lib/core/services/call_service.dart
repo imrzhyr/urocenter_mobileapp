@@ -4,6 +4,8 @@ import 'package:urocenter/core/utils/logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // Import Riverpod
+import 'package:urocenter/services/chat_service.dart'; // Import ChatService
+import 'package:urocenter/providers/service_providers.dart'; // Import service_providers for chatServiceProvider
 
 // Data class to hold incoming call information
 class IncomingCall {
@@ -139,16 +141,137 @@ class CallService {
     }
   }
   
-  // Update call status (e.g., to end the call)
+  // Update call status in Firestore
   Future<void> updateCallStatus(String callId, String status) async {
     try {
-      AppLogger.d("[CallService] Updating call $callId status to $status");
-      await _firestore.collection('calls').doc(callId).update({
-        'status': status
-      });
+      // Get the current call data to determine if we need to generate a chat record
+      final callDoc = await _firestore.collection('calls').doc(callId).get();
+      final callData = callDoc.data();
+      
+      // Get call start time from document
+      DateTime? startTime;
+      if (callData != null && callData['startTime'] != null) {
+        startTime = (callData['startTime'] as Timestamp).toDate();
+      }
+      
+      // Get current time for end time
+      final now = DateTime.now();
+      
+      // Status update data
+      Map<String, dynamic> updateData = {
+        'status': status,
+      };
+      
+      // Add end time and calculate duration for completed, rejected, or ended calls
+      if (status == 'ended' || status == 'completed' || status == 'rejected' || status == 'missed') {
+        updateData['endTime'] = FieldValue.serverTimestamp();
+        
+        // If we have start time, calculate duration in seconds
+        if (startTime != null) {
+          final duration = now.difference(startTime).inSeconds;
+          updateData['duration'] = duration;
+        }
+      }
+      
+      // Update the call document with new status
+      await _firestore.collection('calls').doc(callId).update(updateData);
+      
+      // If the call is ended, completed, rejected, or missed, create a chat message
+      if (status == 'ended' || status == 'completed' || status == 'rejected' || status == 'missed') {
+        await _createCallEventMessage(callId, status, callData);
+      }
+      
       AppLogger.d("[CallService] Call $callId status updated to $status");
     } catch (e) {
-      AppLogger.e("[CallService] Error updating call $callId status: $e");
+      AppLogger.e("[CallService] Error updating call status: $e");
+    }
+  }
+  
+  // Create a message in chat for a call event
+  Future<void> _createCallEventMessage(String callId, String status, Map<String, dynamic>? callData) async {
+    try {
+      Map<String, dynamic>? data = callData;
+      
+      // If call data is null or missing critical fields, try to fetch it again
+      if (data == null || data['callerId'] == null || data['calleeId'] == null) {
+        AppLogger.d("[CallService] Call data missing or incomplete, fetching updated data for call $callId");
+        final callDoc = await _firestore.collection('calls').doc(callId).get();
+        if (callDoc.exists) {
+          data = callDoc.data();
+        } else {
+          AppLogger.e("[CallService] Cannot create call event message - call document no longer exists");
+          return;
+        }
+      }
+      
+      if (data == null) {
+        AppLogger.e("[CallService] Cannot create call event message - no call data available");
+        return;
+      }
+      
+      final callerId = data['callerId'] as String?;
+      final calleeId = data['calleeId'] as String?;
+      final callType = data['type'] as String? ?? 'audio';
+      final duration = data['duration'] as int?;
+      
+      if (callerId == null || calleeId == null) {
+        AppLogger.e("[CallService] Cannot create call event message - missing caller or callee ID even after refetch");
+        return;
+      }
+      
+      // Generate chat ID from caller and callee IDs
+      List<String> participants = [callerId, calleeId];
+      participants.sort(); // Ensure consistent chat ID generation
+      final chatId = participants.join('_');
+      
+      // Construct appropriate message based on call status
+      String messageContent;
+      if (status == 'completed') {
+        String durationText = 'Call ended';
+        if (duration != null) {
+          durationText = _formatCallDuration(duration);
+        }
+        messageContent = '$callType call | $durationText';
+      } else if (status == 'missed' || status == 'no_answer') {
+        messageContent = 'Missed $callType call';
+      } else if (status == 'rejected') {
+        messageContent = 'Declined $callType call';
+      } else {
+        messageContent = '$callType call ended';
+      }
+      
+      // Get chat service and send system message
+      final chatService = _ref.read(chatServiceProvider);
+      await chatService.sendSystemMessage(
+        chatId: chatId,
+        content: messageContent,
+        type: 'call_event',
+        metadata: {
+          'callId': callId,
+          'callType': callType,
+          'status': status,
+          'duration': duration,
+          'callerId': callerId,
+          'calleeId': calleeId
+        }
+      );
+      
+      AppLogger.d("[CallService] Created call event message in chat $chatId for call $callId");
+    } catch (e) {
+      AppLogger.e("[CallService] Error creating call event message: $e");
+    }
+  }
+  
+  // Format call duration for display
+  String _formatCallDuration(int seconds) {
+    final Duration duration = Duration(seconds: seconds);
+    
+    if (duration.inHours > 0) {
+      return 'Call duration: ${duration.inHours}h ${duration.inMinutes.remainder(60)}m ${duration.inSeconds.remainder(60)}s';
+    } else if (duration.inMinutes > 0) {
+      return 'Call duration: ${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
+    } else {
+      return 'Call duration: ${duration.inSeconds}s';
     }
   }
 

@@ -254,14 +254,8 @@ class CallController extends StateNotifier<CallControllerState> {
   // Create and send offer
   Future<void> _createAndSendOffer() async {
     try {
-      // Create call document with status 'pending'
-      await FirebaseFirestore.instance.collection('calls').doc(callId).set({
-        'status': 'pending',
-        'caller': isCaller ? 'user-id' : 'partner-id', // Replace with actual user IDs
-        'callee': isCaller ? 'partner-id' : 'user-id',
-        'timestamp': FieldValue.serverTimestamp(),
-        'channel': callId, // Use callId as channel name
-      });
+      // We should not be creating a new call document here, as the ChatService already did that.
+      // Instead, we should just update the status.
       
       // Update to ringing
       await _updateCallStatus('ringing');

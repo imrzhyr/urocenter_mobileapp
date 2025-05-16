@@ -181,7 +181,7 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
       GoRoute(
         path: '/sign-in',
         name: RouteNames.signIn,
-        pageBuilder: (context, state) => PageTransitions.slideFadeTransition(
+        pageBuilder: (context, state) => PageTransitions.slideTransition(
           context: context,
           state: state,
           direction: SlideDirection.fromRight,
@@ -191,7 +191,7 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
       GoRoute(
         path: '/sign-up',
         name: RouteNames.signUp,
-        pageBuilder: (context, state) => PageTransitions.slideFadeTransition(
+        pageBuilder: (context, state) => PageTransitions.slideTransition(
           context: context,
           state: state,
           direction: SlideDirection.fromRight,
@@ -248,6 +248,7 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
           return PageTransitions.slideTransition(
             context: context,
             state: state,
+            direction: SlideDirection.fromRight,
             child: PhoneVerificationScreen(
               phoneNumber: phoneNumber ?? '', 
             ),

@@ -255,34 +255,30 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   Widget _buildContent() {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
-      // <<< Use SignInScreen's Transition Builder Logic >>>
       transitionBuilder: (Widget child, Animation<double> animation) {
         final slideAnimation = Tween<Offset>(
-          begin: const Offset(1.0, 0.0), // Start off-screen to the right
-          end: Offset.zero,            // End at the original position
+          begin: const Offset(1.0, 0.0), 
+          end: Offset.zero,            
         ).animate(CurvedAnimation(
           parent: animation,
-          curve: Curves.easeInOutCubic, // Smooth easing
+          curve: Curves.easeInOutCubic, 
         ));
 
-        final fadeAnimation = Tween<double>(
-          begin: 0.5, // Start slightly faded
-          end: 1.0,   // End fully opaque
-        ).animate(CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeInOutCubic,
-        ));
+        // Fade transition removed
+        // final fadeAnimation = Tween<double>(
+        //   begin: 0.5, 
+        //   end: 1.0,   
+        // ).animate(CurvedAnimation(
+        //   parent: animation,
+        //   curve: Curves.easeInOutCubic,
+        // ));
         
-        // Use SlideTransition combined with FadeTransition
-        return FadeTransition(
-          opacity: fadeAnimation,
-          child: SlideTransition(
+        // Only use SlideTransition
+        return SlideTransition(
             position: slideAnimation,
             child: child, 
-        ),
-        );
+          );
       },
-      // <<< Re-add layoutBuilder with explicit Top Alignment >>>
       layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
         return Stack(
           alignment: Alignment.topCenter, // Force top alignment

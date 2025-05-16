@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/utils/haptic_utils.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/widgets/app_bar_style2.dart';
 
 class HelpSupportScreen extends ConsumerStatefulWidget {
   const HelpSupportScreen({super.key});
@@ -56,33 +57,29 @@ class _HelpSupportScreenState extends ConsumerState<HelpSupportScreen> {
     
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor,
-        title: Text('help_support.title'.tr()),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: theme.appBarTheme.iconTheme?.color),
-          tooltip: 'common.back'.tr(),
-          onPressed: () {
-            HapticUtils.lightTap();
-            context.pop();
-          },
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AppBarStyle2(
+          title: 'help_support.title'.tr(),
+          showSearch: false,
+          showFilters: false,
+          showBackButton: true,
+          showActionButtons: false,
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           controller: _scrollController,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeaderSection(theme),
-                const SizedBox(height: 24),
-                _buildContactOptions(theme),
-                const SizedBox(height: 32),
-                _buildFAQSection(theme),
-              ],
-            ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeaderSection(theme),
+              const SizedBox(height: 24),
+              _buildContactOptions(theme),
+              const SizedBox(height: 32),
+              _buildFAQSection(theme),
+            ],
           ),
         ),
       ),

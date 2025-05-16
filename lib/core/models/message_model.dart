@@ -6,7 +6,8 @@ enum MessageType {
   text('text'),
   image('image'),
   voice('voice'),
-  document('document');
+  document('document'),
+  call_event('call_event'); // Add call_event type for displaying call status in chat
   
   final String value;
   const MessageType(this.value);

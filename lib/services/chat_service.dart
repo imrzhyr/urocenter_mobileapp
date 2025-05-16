@@ -412,6 +412,7 @@ class ChatService {
       'calleeId': calleeId,
       'calleeName': calleeName,
       'status': 'pending', // Initial status
+      'type': 'audio', // Add type field to fix call event message error
       // 'offer': null, // Explicitly null or absent is fine
       // 'answer': null,
       'createdAt': FieldValue.serverTimestamp(), // Track creation time
@@ -501,6 +502,58 @@ class ChatService {
       AppLogger.e("Error in global incoming messages stream: $error");
       return null; // Emit null on error
     });
+  }
+
+  /// Sends a system message to a chat, used for call events and other system notifications
+  Future<void> sendSystemMessage({
+    required String chatId,
+    required String content,
+    required String type,
+    Map<String, dynamic>? metadata,
+  }) async {
+    AppLogger.d("[ChatService] Sending system message to chat $chatId: $content");
+    try {
+      // Create a "system" message - no particular sender
+      final systemMessage = Message(
+        id: '', // Firestore will generate
+        chatId: chatId,
+        senderId: 'system', // Special sender ID for system messages
+        recipientId: null,
+        content: content,
+        type: MessageType.fromString(type),
+        status: MessageStatus.sent,
+        metadata: metadata,
+        createdAt: DateTime.now(), // Will be replaced with server timestamp
+      );
+
+      final messagesCollection = _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages');
+      final chatDocRef = _firestore.collection('chats').doc(chatId);
+
+      final messageData = systemMessage.toMap();
+      messageData['timestamp'] = FieldValue.serverTimestamp();
+      
+      WriteBatch batch = _firestore.batch();
+      batch.set(messagesCollection.doc(), messageData);
+
+      // Update the chat document with the system message info
+      final chatUpdateData = {
+        'lastMessageContent': systemMessage.content,
+        'lastMessageSenderId': 'system',
+        'lastMessageSenderName': 'System',
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'lastMessageType': systemMessage.type.value,
+      };
+
+      batch.set(chatDocRef, chatUpdateData, SetOptions(merge: true));
+      
+      await batch.commit();
+      AppLogger.d("[ChatService] System message sent to chat $chatId");
+    } catch (e) {
+      AppLogger.e("[ChatService] Error sending system message: $e");
+    }
   }
 
 } 

@@ -253,35 +253,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     // <<< Wrap with AnimatedSwitcher and provide custom transition >>>
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
-      // <<< Define custom transition builder >>>
       transitionBuilder: (Widget child, Animation<double> animation) {
-        // <<< Create slide transition >>>
         final slideAnimation = Tween<Offset>(
-          begin: const Offset(1.0, 0.0), // Start off-screen to the right
-          end: Offset.zero,            // End at the original position
+          begin: const Offset(1.0, 0.0), 
+          end: Offset.zero,            
         ).animate(CurvedAnimation(
           parent: animation,
-          curve: Curves.easeInOutCubic, // Smooth easing
-        ));
-
-        // <<< Create fade transition (optional, for smoother effect) >>>
-        final fadeAnimation = Tween<double>(
-          begin: 0.5, // Start slightly faded
-          end: 1.0,   // End fully opaque
-        ).animate(CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeInOutCubic,
+          curve: Curves.easeInOutCubic, 
         ));
         
-        // Use SlideTransition combined with FadeTransition
-        return FadeTransition(
-          opacity: fadeAnimation,
-          child: SlideTransition(
+        // Only use SlideTransition
+        return SlideTransition(
             position: slideAnimation,
-            // Use the key to ensure AnimatedSwitcher recognizes the child change
             child: child, 
-          ),
-        );
+          );
       },
       child: KeyedSubtree(
         // <<< Use _currentStep as key to trigger animation >>>

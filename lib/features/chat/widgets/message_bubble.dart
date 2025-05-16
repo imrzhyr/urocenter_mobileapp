@@ -96,6 +96,31 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> with AutomaticKee
         );
         break;
         
+      case MessageType.call_event:
+        // Special styling for call events
+        messageContent = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _getCallEventIcon(widget.message.content),
+              size: 18,
+              color: textColor,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                widget.message.content, 
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+        );
+        break;
+        
       default:
         messageContent = Text('[Unsupported message type]', style: TextStyle(color: textColor));
     }
@@ -171,6 +196,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> with AutomaticKee
         return Icons.done_all;
       default:
         return Icons.error_outline;
+    }
+  }
+
+  // Helper method to get the appropriate icon for call events
+  IconData _getCallEventIcon(String content) {
+    if (content.contains('Missed')) {
+      return Icons.call_missed;
+    } else if (content.contains('Declined')) {
+      return Icons.call_end;
+    } else if (content.contains('duration')) {
+      return Icons.call;
+    } else {
+      return Icons.call_made;
     }
   }
 } 

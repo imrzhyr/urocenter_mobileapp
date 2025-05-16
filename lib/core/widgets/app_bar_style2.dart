@@ -93,87 +93,95 @@ class _AppBarStyle2State extends State<AppBarStyle2> {
       elevation: 0, // No elevation for a flat design
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Title and actions row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Back button + Title
-                  Expanded(
-                    child: Row(
-                      children: [
-                        if (widget.showBackButton) ...[
+              SizedBox(
+                height: 40, // Explicit height to prevent overflow
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Back button + Title
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (widget.showBackButton) ...[
+                            IconButton(
+                              icon: Icon(
+                                Icons.arrow_back_ios,
+                                color: theme.colorScheme.onBackground,
+                                size: 20,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                HapticUtils.lightTap();
+                                if (widget.onBackPressed != null) {
+                                  widget.onBackPressed!();
+                                } else {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                            ),
+                            const SizedBox(width: 16),
+                          ],
+                          Expanded(
+                            child: Text(
+                              widget.title.tr(),
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onBackground,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Action buttons (notifications, settings)
+                    if (widget.showActionButtons)
+                      Row(
+                        children: [
                           IconButton(
                             icon: Icon(
-                              Icons.arrow_back_ios,
+                              Icons.notifications_outlined,
                               color: theme.colorScheme.onBackground,
-                              size: 20,
                             ),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                             onPressed: () {
+                              // Navigate to notifications screen
                               HapticUtils.lightTap();
-                              if (widget.onBackPressed != null) {
-                                widget.onBackPressed!();
-                              } else {
-                                Navigator.of(context).pop();
-                              }
+                              context.pushNamed(RouteNames.notifications);
                             },
                           ),
-                          const SizedBox(width: 16),
-                        ],
-                        Expanded(
-                          child: Text(
-                            widget.title.tr(),
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: Icon(
+                              Icons.settings_outlined,
                               color: theme.colorScheme.onBackground,
                             ),
-                            overflow: TextOverflow.ellipsis,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () {
+                              // Navigate to settings screen
+                              HapticUtils.lightTap();
+                              context.pushNamed(RouteNames.settings);
+                            },
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Action buttons (notifications, settings)
-                  if (widget.showActionButtons)
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.notifications_outlined,
-                            color: theme.colorScheme.onBackground,
-                          ),
-                          onPressed: () {
-                            // Navigate to notifications screen
-                            HapticUtils.lightTap();
-                            context.pushNamed(RouteNames.notifications);
-                          },
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            Icons.settings_outlined,
-                            color: theme.colorScheme.onBackground,
-                          ),
-                          onPressed: () {
-                            // Navigate to settings screen
-                            HapticUtils.lightTap();
-                            context.pushNamed(RouteNames.settings);
-                          },
-                        ),
-                      ],
-                    ),
-                ],
+                        ],
+                      ),
+                  ],
+                ),
               ),
               
               // Search bar
               if (widget.showSearch) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 SearchBarStyle2(
                   controller: widget.searchController,
                   onChanged: widget.onSearchChanged,
@@ -192,7 +200,7 @@ class _AppBarStyle2State extends State<AppBarStyle2> {
                   height: widget.filtersExpanded ? widget.filterHeight : 0,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Row(
                       children: widget.filterOptions?.map((option) => _buildFilterChip(option)).toList() ?? [],
                     ),

@@ -182,6 +182,7 @@
   },
   "documents": {
     "my_documents": "وثائقي",
+    "title": "وثائقي",
     "add_document": "إضافة وثيقة",
     "take_photo": "التقاط صورة",
     "upload_photo": "تحميل صورة",

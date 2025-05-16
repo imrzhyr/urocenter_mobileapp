@@ -11,6 +11,7 @@ import '../../../core/theme/theme.dart';
 import '../../../core/utils/error_handler.dart'; // <<< ADDED Error Handler
 import '../../../core/utils/haptic_utils.dart';
 import '../../../core/widgets/circular_loading_indicator.dart';
+import '../../../core/widgets/app_bar_style2.dart';
 
 // Removed typedef, will use Map<String, dynamic>
 // typedef MedicalHistoryData = Map<String, dynamic>; 
@@ -123,26 +124,15 @@ class _MedicalHistoryViewScreenState extends ConsumerState<MedicalHistoryViewScr
     return Scaffold( // Use standard Scaffold
       // Use theme's scaffold background color
       backgroundColor: Theme.of(context).scaffoldBackgroundColor, 
-      appBar: AppBar(
-        title: Text('medical_history.title'.tr()), // Localized
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios), // Color inherited from iconTheme
-          onPressed: () => context.pop(), // Use pop for back
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AppBarStyle2(
+          title: 'medical_history.title'.tr(),
+          showSearch: false,
+          showFilters: false,
+          showBackButton: true,
+          showActionButtons: false,
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined), // Color inherited from actionsIconTheme
-            tooltip: 'medical_history.edit'.tr(), // Localized
-            onPressed: () {
-              HapticUtils.lightTap();
-              // TODO: Implement navigation to an edit screen (matching onboarding structure)
-              AppLogger.d('Navigate to Edit Medical History Screen');
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('medical_history.edit_coming_soon'.tr())) // Localized
-              );
-            },
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadMedicalHistory(isRefresh: true),
@@ -298,7 +288,7 @@ class _MedicalHistoryViewScreenState extends ConsumerState<MedicalHistoryViewScr
 
     // --- Build the main layout ---
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
