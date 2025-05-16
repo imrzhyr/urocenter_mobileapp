@@ -3,11 +3,10 @@ import 'package:urocenter/core/utils/logger.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
 // Core imports
 import 'package:urocenter/core/services/call_service.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 
 // Define an enum for call connection states
 enum CallConnectionState {
@@ -21,8 +20,6 @@ enum CallConnectionState {
 // CallControllerState to track state
 class CallControllerState {
   final CallConnectionState connectionState;
-  final MediaStream? localStream;
-  final MediaStream? remoteStream;
   final bool isMuted;
   final bool isSpeakerOn;
   final String? errorMessage;
@@ -30,8 +27,6 @@ class CallControllerState {
 
   CallControllerState({
     this.connectionState = CallConnectionState.connecting,
-    this.localStream,
-    this.remoteStream,
     this.isMuted = false,
     this.isSpeakerOn = true,
     this.errorMessage,
@@ -40,8 +35,6 @@ class CallControllerState {
 
   CallControllerState copyWith({
     CallConnectionState? connectionState,
-    MediaStream? localStream,
-    MediaStream? remoteStream,
     bool? isMuted,
     bool? isSpeakerOn,
     String? errorMessage,
@@ -49,8 +42,6 @@ class CallControllerState {
   }) {
     return CallControllerState(
       connectionState: connectionState ?? this.connectionState,
-      localStream: localStream ?? this.localStream,
-      remoteStream: remoteStream ?? this.remoteStream,
       isMuted: isMuted ?? this.isMuted,
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -59,41 +50,30 @@ class CallControllerState {
   }
 }
 
+// Record type for parameters
+typedef CallControllerParams = ({String callId, bool isCaller});
+
+final callControllerProvider = StateNotifierProvider.family<CallController, CallControllerState, CallControllerParams>(
+  (ref, params) => CallController(ref, params.callId, params.isCaller),
+);
+
 class CallController extends StateNotifier<CallControllerState> {
   final String callId;
   final bool isCaller;
   final Ref ref;
-
-  RTCPeerConnection? _peerConnection;
+  
+  // Agora engine instance
+  RtcEngine? _agoraEngine;
   StreamSubscription? _callDocSubscription;
-  StreamSubscription? _callerCandidatesSubscription;
-  StreamSubscription? _calleeCandidatesSubscription;
-  bool _hasAddedIceCandidates = false;
-
-  // Configuration for WebRTC
-  final Map<String, dynamic> _configuration = {
-    'iceServers': [
-      {
-        'urls': [
-          'stun:stun1.l.google.com:19302',
-          'stun:stun2.l.google.com:19302',
-        ],
-      },
-    ],
-    'sdpSemantics': 'unified-plan',
-  };
-
-  // SDP constraints
-  final Map<String, dynamic> _sdpConstraints = {
-    'mandatory': {
-      'OfferToReceiveAudio': true,
-      'OfferToReceiveVideo': true,
-    },
-    'optional': [],
-  };
-
+  
+  // Agora app configuration
+  final String _appId = "bb974772465f4481b6e8430d1d720b0e";
+  String _channelName = ""; // Will be set to callId
+  
   CallController(this.ref, this.callId, this.isCaller)
-      : super(CallControllerState()) {
+      : super(CallControllerState(
+          callStatus: isCaller ? 'pending' : 'ringing',
+        )) {
     // Initialize call on creation
     initCall();
   }
@@ -101,34 +81,23 @@ class CallController extends StateNotifier<CallControllerState> {
   // Initialize a call
   Future<void> initCall() async {
     try {
-      // Create peer connection
-      _peerConnection = await createPeerConnection(_configuration);
-
-      // Set up event listeners for peer connection
-      _registerPeerConnectionListeners();
-
-      // Get local media stream
-      final localStream = await _getLocalStream();
-      state = state.copyWith(
-        localStream: localStream,
-        connectionState: CallConnectionState.connecting,
-        callStatus: 'pending',
-      );
-
-      // Add tracks from local stream to peer connection
-      localStream.getTracks().forEach((track) {
-        _peerConnection!.addTrack(track, localStream);
-      });
-
-      // Listen for call document changes
+      AppLogger.d("[CallController] Initializing call with Agora");
+      
+      // Setup Agora SDK
+      await _setupAgoraSDK();
+      
+      // Start listening for call document changes
       _listenForCallDocumentChanges();
-
-      // Handle call initiation based on caller status
+      
       if (isCaller) {
+        // Create and send offer through Firestore to signal the call is pending
         await _createAndSendOffer();
       } else {
-        // Wait for offer to be processed in _listenForCallDocumentChanges
-        AppLogger.d("[CallController] Waiting for offer as callee...");
+        AppLogger.d("[CallController] Waiting for call as callee...");
+        // Set initial state to ringing for callee
+        state = state.copyWith(
+          connectionState: CallConnectionState.ringing,
+        );
       }
     } catch (e) {
       AppLogger.e("[CallController] Error initializing call: $e");
@@ -139,315 +108,231 @@ class CallController extends StateNotifier<CallControllerState> {
     }
   }
 
-  // Get local media stream
-  Future<MediaStream> _getLocalStream() async {
-    final mediaConstraints = {
-      'audio': true,
-      'video': false, // Audio-only call
-    };
-
+  // Setup Agora SDK
+  Future<void> _setupAgoraSDK() async {
     try {
-      return await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      // Create RtcEngine instance
+      _agoraEngine = createAgoraRtcEngine();
+      
+      // Initialize the engine
+      await _agoraEngine!.initialize(RtcEngineContext(
+        appId: _appId,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      ));
+      
+      // Setup event handlers
+      _registerEventHandlers();
+      
+      // Set channel name to call ID for easy matching
+      _channelName = callId;
+      
+      // Setup audio mode
+      await _agoraEngine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+      await _agoraEngine!.enableAudio();
+      await _agoraEngine!.disableVideo();
+      
+      AppLogger.d("[CallController] Agora SDK setup complete");
     } catch (e) {
-      AppLogger.e("[CallController] Error getting local stream: $e");
+      AppLogger.e("[CallController] Error setting up Agora SDK: $e");
       rethrow;
     }
   }
 
-  // Register listeners for peer connection events
-  void _registerPeerConnectionListeners() {
-    _peerConnection?.onIceCandidate = _handleIceCandidate;
-    _peerConnection?.onIceConnectionState = _handleIceConnectionStateChange;
-    _peerConnection?.onAddStream = _handleRemoteStream;
-  }
-
-  // Handle new ICE candidate
-  void _handleIceCandidate(RTCIceCandidate candidate) async {
-    AppLogger.d("[CallController] New ICE candidate: ${candidate.toMap()}");
-    
-    final callService = ref.read(callServiceProvider);
-    if (isCaller) {
-      await callService.addCallerIceCandidate(callId, candidate.toMap());
-    } else {
-      await callService.addCalleeIceCandidate(callId, candidate.toMap());
-    }
-  }
-
-  // Handle ICE connection state changes
-  void _handleIceConnectionStateChange(RTCIceConnectionState state) {
-    AppLogger.d("[CallController] ICE connection state change: $state");
-    
-    switch (state) {
-      case RTCIceConnectionState.RTCIceConnectionStateConnected:
-        this.state = this.state.copyWith(
-          connectionState: CallConnectionState.connected,
-        );
-        break;
-      case RTCIceConnectionState.RTCIceConnectionStateFailed:
-        this.state = this.state.copyWith(
-          connectionState: CallConnectionState.failed,
-          errorMessage: "Connection failed. Please try again.",
-        );
-        break;
-      case RTCIceConnectionState.RTCIceConnectionStateDisconnected:
-      case RTCIceConnectionState.RTCIceConnectionStateClosed:
-        if (this.state.connectionState != CallConnectionState.ended &&
-            this.state.connectionState != CallConnectionState.failed) {
-          this.state = this.state.copyWith(
-            connectionState: CallConnectionState.ended,
+  // Register Agora event handlers
+  void _registerEventHandlers() {
+    _agoraEngine?.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          AppLogger.d("[CallController] Successfully joined channel: ${connection.channelId}");
+          state = state.copyWith(
+            connectionState: CallConnectionState.connected,
+            callStatus: 'answered',
           );
-        }
-        break;
-      default:
-        // Handle other states if needed
-        break;
-    }
-  }
-
-  // Handle remote stream
-  void _handleRemoteStream(MediaStream stream) {
-    AppLogger.d("[CallController] Got remote stream");
-    state = state.copyWith(
-      remoteStream: stream,
-      connectionState: CallConnectionState.connected,
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          AppLogger.d("[CallController] Remote user joined: $remoteUid");
+          // User joined, call is now connected
+          state = state.copyWith(
+            connectionState: CallConnectionState.connected,
+            callStatus: 'answered',
+          );
+          
+          // Update call document to indicate call is answered
+          if (!isCaller) {
+            _updateCallStatus('answered');
+          }
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          AppLogger.d("[CallController] Remote user left: $remoteUid, reason: $reason");
+          // Handle user leaving - might be end of call
+          if (reason == UserOfflineReasonType.userOfflineQuit) {
+            // Remote user ended the call
+            hangUp(userInitiated: false);
+          }
+        },
+        onConnectionStateChanged: (RtcConnection connection, ConnectionStateType state, ConnectionChangedReasonType reason) {
+          AppLogger.d("[CallController] Connection state changed: $state, reason: $reason");
+          
+          if (state == ConnectionStateType.connectionStateDisconnected || 
+              state == ConnectionStateType.connectionStateFailed) {
+            this.state = this.state.copyWith(
+              connectionState: CallConnectionState.failed,
+              errorMessage: "Connection lost. Please try again.",
+            );
+          }
+        },
+        onError: (ErrorCodeType err, String msg) {
+          AppLogger.e("[CallController] Error occurred: $err, $msg");
+          
+          // Handle critical errors
+          if (err.value() >= 1000 && err.value() < 2000) {
+            state = state.copyWith(
+              connectionState: CallConnectionState.failed,
+              errorMessage: "Call error: $msg",
+            );
+          }
+        },
+      ),
     );
-  }
-
-  // Create and send offer
-  Future<void> _createAndSendOffer() async {
-    try {
-      AppLogger.d("[CallController] Creating offer...");
-      RTCSessionDescription offer = await _peerConnection!.createOffer(_sdpConstraints);
-      await _peerConnection!.setLocalDescription(offer);
-      
-      // Convert offer to map for Firestore
-      final offerMap = {
-        'type': offer.type,
-        'sdp': offer.sdp,
-      };
-      
-      // Update Firestore with offer
-      await FirebaseFirestore.instance.collection('calls').doc(callId).update({
-        'offer': offerMap,
-      });
-      
-      // Update status to ringing
-      await FirebaseFirestore.instance.collection('calls').doc(callId).update({
-        'status': 'ringing',
-      });
-      
-      state = state.copyWith(
-        connectionState: CallConnectionState.ringing,
-        callStatus: 'ringing',
-      );
-      
-      AppLogger.d("[CallController] Offer created and sent");
-    } catch (e) {
-      AppLogger.e("[CallController] Error creating/sending offer: $e");
-      state = state.copyWith(
-        connectionState: CallConnectionState.failed,
-        errorMessage: "Failed to create call offer: $e",
-      );
-    }
-  }
-
-  // Process offer and create answer
-  Future<void> _processOfferAndCreateAnswer(Map<String, dynamic> offerData) async {
-    try {
-      AppLogger.d("[CallController] Processing offer and creating answer...");
-      
-      // Create RTCSessionDescription from offer
-      final RTCSessionDescription offer = RTCSessionDescription(
-        offerData['sdp'],
-        offerData['type'],
-      );
-      
-      // Set remote description
-      await _peerConnection!.setRemoteDescription(offer);
-      
-      // Create answer
-      RTCSessionDescription answer = await _peerConnection!.createAnswer(_sdpConstraints);
-      await _peerConnection!.setLocalDescription(answer);
-      
-      // Convert answer to map
-      final answerMap = {
-        'type': answer.type,
-        'sdp': answer.sdp,
-      };
-      
-      // Get call service
-      final callService = ref.read(callServiceProvider);
-      
-      // Update call status to answered and set answer
-      await callService.acceptCall(callId, answerMap);
-      
-      state = state.copyWith(
-        callStatus: 'answered',
-      );
-      
-      AppLogger.d("[CallController] Answer created and sent");
-    } catch (e) {
-      AppLogger.e("[CallController] Error processing offer or creating answer: $e");
-      state = state.copyWith(
-        connectionState: CallConnectionState.failed,
-        errorMessage: "Failed to answer call: $e",
-      );
-    }
-  }
-
-  // Process answer
-  Future<void> _processAnswer(Map<String, dynamic> answerData) async {
-    try {
-      AppLogger.d("[CallController] Processing answer...");
-      
-      // Create RTCSessionDescription from answer
-      final RTCSessionDescription answer = RTCSessionDescription(
-        answerData['sdp'],
-        answerData['type'],
-      );
-      
-      // Set remote description
-      await _peerConnection!.setRemoteDescription(answer);
-      
-      state = state.copyWith(
-        callStatus: 'answered',
-      );
-      
-      AppLogger.d("[CallController] Answer processed");
-    } catch (e) {
-      AppLogger.e("[CallController] Error processing answer: $e");
-      state = state.copyWith(
-        connectionState: CallConnectionState.failed,
-        errorMessage: "Failed to process call answer: $e",
-      );
-    }
   }
 
   // Listen for call document changes
   void _listenForCallDocumentChanges() {
     final callService = ref.read(callServiceProvider);
     
-    _callDocSubscription = callService.getCallDocStream(callId).listen((snapshot) {
-      if (!snapshot.exists) {
-        AppLogger.d("[CallController] Call document no longer exists");
-        state = state.copyWith(
-          connectionState: CallConnectionState.ended,
-          callStatus: 'ended',
-        );
+    _callDocSubscription = callService.getCallDocStream(callId).listen((doc) async {
+      if (!doc.exists) {
+        AppLogger.d("[CallController] Call document does not exist");
         return;
       }
       
-      final data = snapshot.data() as Map<String, dynamic>;
-      final status = data['status'] as String?;
+      final data = doc.data() as Map<String, dynamic>;
+      final callStatus = data['status'] as String? ?? 'pending';
       
-      AppLogger.d("[CallController] Call status update: $status");
+      AppLogger.d("[CallController] Call document updated with status: $callStatus");
       
-      state = state.copyWith(callStatus: status);
-      
-      switch (status) {
+      switch (callStatus) {
         case 'pending':
-          // Only update state if we're not in a later state already
-          if (state.connectionState == CallConnectionState.connecting) {
-            state = state.copyWith(
-              connectionState: CallConnectionState.connecting,
-            );
-          }
+          // No action needed, already in pending state
           break;
         case 'ringing':
-          if (state.connectionState == CallConnectionState.connecting) {
-            state = state.copyWith(
-              connectionState: CallConnectionState.ringing,
-            );
-          }
-          // If we're the callee and there's an offer, process it
-          if (!isCaller && data.containsKey('offer') && data['offer'] != null) {
-            _processOfferAndCreateAnswer(data['offer']);
-          }
+          state = state.copyWith(
+            connectionState: CallConnectionState.ringing,
+            callStatus: 'ringing',
+          );
           break;
         case 'answered':
-          // If we're the caller and there's an answer, process it
-          if (isCaller && data.containsKey('answer') && data['answer'] != null) {
-            _processAnswer(data['answer']);
+          // If we're the caller and call was just answered, join the channel
+          if (isCaller && state.callStatus != 'answered') {
+            _joinChannel();
           }
           break;
         case 'rejected':
-          hangUp();
-          state = state.copyWith(
-            connectionState: CallConnectionState.ended,
-            callStatus: 'rejected',
-          );
+          if (state.connectionState != CallConnectionState.ended) {
+            state = state.copyWith(
+              connectionState: CallConnectionState.ended,
+              callStatus: 'rejected',
+            );
+            _leaveChannel();
+          }
           break;
         case 'ended':
-          hangUp();
-          state = state.copyWith(
-            connectionState: CallConnectionState.ended,
-          );
+          if (state.connectionState != CallConnectionState.ended) {
+            state = state.copyWith(
+              connectionState: CallConnectionState.ended,
+              callStatus: 'ended',
+            );
+            _leaveChannel();
+          }
           break;
-      }
-      
-      // Once call is answered, start listening for ICE candidates if we haven't already
-      if (status == 'answered' && !_hasAddedIceCandidates) {
-        _listenForRemoteCandidates();
-        _hasAddedIceCandidates = true;
       }
     }, onError: (e) {
       AppLogger.e("[CallController] Error listening to call document: $e");
-      state = state.copyWith(
-        connectionState: CallConnectionState.failed,
-        errorMessage: "Error monitoring call: $e",
-      );
     });
   }
 
-  // Listen for remote ICE candidates
-  void _listenForRemoteCandidates() {
-    final callService = ref.read(callServiceProvider);
-    
-    if (isCaller) {
-      // Caller listens for callee candidates
-      _calleeCandidatesSubscription = callService.getCalleeCandidatesStream(callId).listen((snapshot) {
-        for (var change in snapshot.docChanges) {
-          if (change.type == DocumentChangeType.added) {
-            final data = change.doc.data() as Map<String, dynamic>;
-            AppLogger.d("[CallController] Got new callee ICE candidate");
-            _peerConnection?.addCandidate(
-              RTCIceCandidate(
-                data['candidate'],
-                data['sdpMid'],
-                data['sdpMLineIndex'],
-              ),
-            );
-          }
-        }
+  // Create and send offer
+  Future<void> _createAndSendOffer() async {
+    try {
+      // Create call document with status 'pending'
+      await FirebaseFirestore.instance.collection('calls').doc(callId).set({
+        'status': 'pending',
+        'caller': isCaller ? 'user-id' : 'partner-id', // Replace with actual user IDs
+        'callee': isCaller ? 'partner-id' : 'user-id',
+        'timestamp': FieldValue.serverTimestamp(),
+        'channel': callId, // Use callId as channel name
       });
-    } else {
-      // Callee listens for caller candidates
-      _callerCandidatesSubscription = callService.getCallerCandidatesStream(callId).listen((snapshot) {
-        for (var change in snapshot.docChanges) {
-          if (change.type == DocumentChangeType.added) {
-            final data = change.doc.data() as Map<String, dynamic>;
-            AppLogger.d("[CallController] Got new caller ICE candidate");
-            _peerConnection?.addCandidate(
-              RTCIceCandidate(
-                data['candidate'],
-                data['sdpMid'],
-                data['sdpMLineIndex'],
-              ),
-            );
-          }
-        }
-      });
+      
+      // Update to ringing
+      await _updateCallStatus('ringing');
+      
+      AppLogger.d("[CallController] Sent call offer through Firestore");
+      
+      state = state.copyWith(
+        connectionState: CallConnectionState.ringing,
+        callStatus: 'ringing',
+      );
+    } catch (e) {
+      AppLogger.e("[CallController] Error creating and sending offer: $e");
+      state = state.copyWith(
+        connectionState: CallConnectionState.failed,
+        errorMessage: "Failed to initiate call: $e",
+      );
+    }
+  }
+
+  // Join the Agora channel
+  Future<void> _joinChannel() async {
+    try {
+      const token = null; // Use token for production
+      const uid = 0; // 0 means let the server assign one
+      const options = ChannelMediaOptions(
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      );
+      
+      await _agoraEngine?.joinChannel(
+        token: token,
+        channelId: _channelName,
+        uid: uid,
+        options: options,
+      );
+      
+      AppLogger.d("[CallController] Joined Agora channel: $_channelName");
+    } catch (e) {
+      AppLogger.e("[CallController] Error joining channel: $e");
+      state = state.copyWith(
+        connectionState: CallConnectionState.failed,
+        errorMessage: "Failed to join call: $e",
+      );
+    }
+  }
+
+  // Leave the Agora channel
+  Future<void> _leaveChannel() async {
+    try {
+      await _agoraEngine?.leaveChannel();
+      AppLogger.d("[CallController] Left Agora channel");
+    } catch (e) {
+      AppLogger.e("[CallController] Error leaving channel: $e");
+    }
+  }
+
+  // Update call status in Firestore
+  Future<void> _updateCallStatus(String status) async {
+    try {
+      final callService = ref.read(callServiceProvider);
+      await callService.updateCallStatus(callId, status);
+      AppLogger.d("[CallController] Updated call status to: $status");
+    } catch (e) {
+      AppLogger.e("[CallController] Error updating call status: $e");
     }
   }
 
   // Toggle mute
   void toggleMute() {
-    if (state.localStream == null) return;
-    
-    bool currentMuteState = state.isMuted;
-    state.localStream!.getAudioTracks().forEach((track) {
-      track.enabled = currentMuteState; // Toggle: If muted, enable; if not muted, disable
-    });
+    final currentMuteState = state.isMuted;
+    _agoraEngine?.muteLocalAudioStream(!currentMuteState);
     
     state = state.copyWith(isMuted: !currentMuteState);
     AppLogger.d("[CallController] Mic ${!currentMuteState ? 'muted' : 'unmuted'}");
@@ -455,65 +340,77 @@ class CallController extends StateNotifier<CallControllerState> {
 
   // Toggle speaker
   void toggleSpeaker() {
-    if (state.remoteStream == null) return;
+    final currentSpeakerState = state.isSpeakerOn;
+    _agoraEngine?.setEnableSpeakerphone(!currentSpeakerState);
     
-    // This is a simplified version. In a real implementation, this would use platform-specific
-    // audio routing APIs to switch between speaker and earpiece.
-    bool currentSpeakerState = state.isSpeakerOn;
-    
-    // For now, we just update the state. The actual audio output switching would need native code.
     state = state.copyWith(isSpeakerOn: !currentSpeakerState);
     AppLogger.d("[CallController] Speaker ${!currentSpeakerState ? 'on' : 'off'}");
   }
 
-  // Hang up call
-  Future<void> hangUp() async {
-    // Update call status to ended if we're in an active state
-    if (state.callStatus == 'pending' || state.callStatus == 'ringing' || state.callStatus == 'answered') {
-      try {
-        final callService = ref.read(callServiceProvider);
-        await callService.updateCallStatus(callId, 'ended');
-      } catch (e) {
-        AppLogger.e("[CallController] Error updating call status to ended: $e");
-      }
+  // Answer call
+  Future<void> answerCall() async {
+    try {
+      // Update call status in Firestore
+      await _updateCallStatus('answered');
+      
+      // Join the channel
+      await _joinChannel();
+      
+      AppLogger.d("[CallController] Call answered and joined channel");
+    } catch (e) {
+      AppLogger.e("[CallController] Error answering call: $e");
+      state = state.copyWith(
+        connectionState: CallConnectionState.failed,
+        errorMessage: "Failed to answer call: $e",
+      );
     }
-
-    // Clean up resources
-    _cleanupResources();
-    
-    // Update state
-    state = state.copyWith(
-      connectionState: CallConnectionState.ended,
-      callStatus: 'ended',
-    );
   }
 
-  // Clean up resources
-  void _cleanupResources() {
-    // Clean up subscriptions
-    _callDocSubscription?.cancel();
-    _callerCandidatesSubscription?.cancel();
-    _calleeCandidatesSubscription?.cancel();
-    
-    // Close tracks
-    state.localStream?.getTracks().forEach((track) => track.stop());
-    state.remoteStream?.getTracks().forEach((track) => track.stop());
-    
-    // Close peer connection
-    _peerConnection?.close();
-    _peerConnection = null;
+  // Reject call
+  Future<void> rejectCall() async {
+    try {
+      await _updateCallStatus('rejected');
+      
+      state = state.copyWith(
+        connectionState: CallConnectionState.ended,
+        callStatus: 'rejected',
+      );
+      
+      AppLogger.d("[CallController] Call rejected");
+    } catch (e) {
+      AppLogger.e("[CallController] Error rejecting call: $e");
+    }
+  }
+
+  // Hang up call
+  Future<void> hangUp({bool userInitiated = true}) async {
+    try {
+      if (userInitiated) {
+        await _updateCallStatus('ended');
+      }
+      
+      await _leaveChannel();
+      
+      state = state.copyWith(
+        connectionState: CallConnectionState.ended,
+        callStatus: 'ended',
+      );
+      
+      AppLogger.d("[CallController] Call ended");
+    } catch (e) {
+      AppLogger.e("[CallController] Error hanging up call: $e");
+    }
   }
 
   @override
   void dispose() {
-    AppLogger.d("[CallController] Disposing controller");
-    _cleanupResources();
+    AppLogger.d("[CallController] Disposing call controller");
+    
+    // Clean up resources
+    _callDocSubscription?.cancel();
+    _leaveChannel();
+    _agoraEngine?.release();
+    
     super.dispose();
   }
-}
-
-// Provider for call controller
-final callControllerProvider = StateNotifierProvider.autoDispose
-    .family<CallController, CallControllerState, ({String callId, bool isCaller})>(
-  (ref, params) => CallController(ref, params.callId, params.isCaller),
-); 
+} 

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Added import
 import 'package:uuid/uuid.dart';
 import 'package:permission_handler/permission_handler.dart'; // Import permission_handler
+import '../../../app/routes.dart'; // Import routes for navigation
 import 'package:flutter_sound/flutter_sound.dart' hide PlayerState; // Import flutter_sound, HIDE PlayerState
 import 'package:path_provider/path_provider.dart'; // Import path_provider
 // Needed for DateFormat in _formatDateHeader
@@ -143,6 +144,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
   bool _isAdmin = false; // Assume false by default
   // --- END: Admin Role Flag ---
   
+  // --- Track if user has manually scrolled ---
+  bool _userScrolled = false;
+  
   @override
   void initState() {
     super.initState();
@@ -190,13 +194,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       }
     });
     
-    // <<< ADD: Update currently viewed chat ID >>>
+    // <<< UPDATE: Set currently viewed chat ID using Future.microtask >>>
     final chatId = _generateChatId(FirebaseAuth.instance.currentUser?.uid ?? '', _chatPartnerId);
-    // Update the provider after the first frame to ensure context is ready
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Update the provider using Future.microtask to avoid modifying provider during build
+    Future.microtask(() {
       if (mounted) {
-          ref.read(currentlyViewedChatIdProvider.notifier).state = chatId;
-          AppLogger.d("[ChatScreen] Set currently viewed chat ID: $chatId");
+        ref.read(currentlyViewedChatIdProvider.notifier).state = chatId;
+        AppLogger.d("[ChatScreen] Set currently viewed chat ID: $chatId");
       }
     });
     // <<< END: Update currently viewed chat ID >>>
@@ -466,30 +470,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
   
   @override
   void dispose() {
+    // Try to safely clear the currently viewed chat ID
+    final shouldAttemptProviderClear = mounted && FirebaseAuth.instance.currentUser != null;
+    
+    // Pre-capture all needed data BEFORE starting disposal sequence
+    String? chatIdToClear;
+    Object? providerNotifier;
+    
+    if (shouldAttemptProviderClear) {
+      try {
+        final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+        if (currentUserId != null) {
+          final generatedChatId = _generateChatId(currentUserId, _chatPartnerId);
+          final currentChatIdInProvider = ref.read(currentlyViewedChatIdProvider);
+          
+          if (currentChatIdInProvider == generatedChatId) {
+            // Capture both pieces of data we'll need
+            chatIdToClear = generatedChatId;
+            providerNotifier = ref.read(currentlyViewedChatIdProvider.notifier);
+          }
+        }
+      } catch (e) {
+        // Silently fail pre-capture, just log
+        AppLogger.d("[ChatScreen] Pre-capture setup for cleanup failed: $e");
+      }
+    }
+    
+    // First dispose all resources
     _messageController.dispose();
     _scrollController.dispose();
-    _messageSubscription?.cancel(); // <<< CANCEL subscription
-    _chatStatusSubscription?.cancel(); // <<< CANCEL chat status subscription
-    _soundRecorder.closeRecorder(); // Close the sound recorder
-    _recordingTimer?.cancel(); // Cancel recording timer
-    _introController.dispose(); // Dispose animation controller
+    _messageSubscription?.cancel();
+    _chatStatusSubscription?.cancel();
+    _soundRecorder.closeRecorder();
+    _recordingTimer?.cancel();
+    _introController.dispose();
     
-    // <<< ADD: Clear currently viewed chat ID >>>
-    // Use SchedulerBinding to avoid calling setState during dispose
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-        // Check if the current value is still this chat before clearing
-        // This prevents accidentally clearing if the user navigates away
-        // and back to a *different* chat before this dispose frame callback runs.
-        final currentChatIdInProvider = ref.read(currentlyViewedChatIdProvider);
-        final thisChatId = _generateChatId(FirebaseAuth.instance.currentUser?.uid ?? '', _chatPartnerId);
-        if (currentChatIdInProvider == thisChatId) {
-            ref.read(currentlyViewedChatIdProvider.notifier).state = null;
-            AppLogger.d("[ChatScreen] Cleared currently viewed chat ID: $thisChatId");
-        }
-    });
-    // <<< END: Clear currently viewed chat ID >>>
-    
+    // Call super.dispose() to finish widget disposal
     super.dispose();
+    
+    // After widget disposal is complete, conditionally update the provider
+    // This is outside the widget lifecycle, so no need for mounted check
+    if (chatIdToClear != null && providerNotifier != null) {
+      try {
+        // Cast back to the correct StateController type
+        final typedNotifier = providerNotifier as StateController<String?>;
+        typedNotifier.state = null;
+        AppLogger.d("[ChatScreen] Cleared currently viewed chat ID: $chatIdToClear");
+      } catch (e) {
+        AppLogger.e("[ChatScreen] Error during post-dispose cleanup: $e");
+      }
+    }
   }
   
   // Initialize FlutterSoundRecorder
@@ -580,10 +610,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
             _messages.addAll(newMessages); // Add all messages from stream
             _isLoading = false; // Stop loading once messages arrive
           });
-          // <<< THEN schedule scroll for after layout >>>
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom(); // Scroll down after updating messages and layout
-          });
+          // Don't use post-frame callback for initial scroll (prevents iOS animation)
+          // Initial positioning is handled by ListView.builder with reverse: true
         }
       },
       onError: (error) {
@@ -691,7 +719,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
       await chatService.sendMessageToFirestore(chatId, message);
       AppLogger.d("[DEBUG] Successfully called sendMessageToFirestore for chat: $chatId");
       // No need for setState here, the stream listener will update the UI
-      // No need to scroll here, stream listener handles it
+      
+      // Scroll to bottom after sending (needed with reverse ListView)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToBottom();
+      });
     } catch (e) {
       AppLogger.e("[DEBUG] Error calling sendMessageToFirestore: $e");
       // TODO: Handle error - maybe show snackbar, maybe add message back to text field?
@@ -754,7 +786,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     setState(() {
       _messages.add(tempMessage);
     });
-    _scrollToBottom();
+    // Need to scroll to bottom after adding a message with reverse ListView
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToBottom();
+    });
 
     // --- Start Upload Process --- 
     String? downloadUrl;
@@ -842,26 +877,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
 
   // Scroll to the bottom of the list
   void _scrollToBottom() {
-    // <<< Remove SchedulerBinding.instance.addPostFrameCallback wrapper >>>
-    // SchedulerBinding.instance.addPostFrameCallback((_) async { 
-      // // Initial delay for layout
-      // await Future.delayed(const Duration(milliseconds: 50)); 
-      
-      // <<< Perform check and jump directly >>>
-      if (!mounted || !_scrollController.hasClients) return;
+    if (!mounted || !_scrollController.hasClients) return;
 
-      const double targetOffsetPadding = 50.0; // Keep padding
+    const double targetOffsetPadding = 50.0; // Keep padding for visibility
+    final double target = _scrollController.position.maxScrollExtent + targetOffsetPadding;
+    
+    // Jump directly to the bottom without animation
+    _scrollController.jumpTo(target);
+  }
 
-      // --- Jump directly to the target --- 
-      final double target = _scrollController.position.maxScrollExtent + targetOffsetPadding;
-      _scrollController.jumpTo(
-        target,
-      );
-
-      // --- Removed second check and animation logic ---
-      
-    // <<< Remove closing parenthesis for addPostFrameCallback >>>
-    // }); 
+  // Handle keyboard appearance
+  void _handleKeyboardAppearance() {
+    if (!mounted || !_scrollController.hasClients) return;
+    
+    // Always scroll to latest message when keyboard appears
+    // No matter where the user was previously scrolled to
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted && _messages.isNotEmpty) {
+        // With reversed ListView, position 0 is the most recent message
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
   
   // --- Show Attachment Options ---
@@ -1118,7 +1158,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     setState(() {
       _messages.add(tempMessage);
     });
-    _scrollToBottom();
+    // Need to scroll to bottom after adding a message with reverse ListView
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToBottom();
+    });
 
     // --- Start Upload Process --- 
     String? downloadUrl;
@@ -1327,10 +1370,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     // Determine if text field is empty
     bool isTextFieldEmpty = _messageController.text.trim().isEmpty;
 
-    // --- Calculate hint text ---\n    String hintTextValue; \n    if (_isRecording) {\n      final formattedDuration = \'${\_recordingDuration.inMinutes.toString().padLeft(2, \'0\')}:${(\_recordingDuration.inSeconds % 60).toString().padLeft(2, \'0\')}\';\n      // Ensure the key \'chat.recording\' in your translation files has \"{}\" placeholder\n      hintTextValue = \'chat.recording\'.tr(args: [formattedDuration]); \n    } else {\n      hintTextValue = \'chat.send_message\'.tr();\n    }\n    // --- End Calculate hint text ---\n
-
     return Scaffold(
       backgroundColor: Theme.of(context).cardColor, // Set Scaffold BG to Card color
+      resizeToAvoidBottomInset: true, // Use default behavior for simpler implementation
       appBar: AppBar(
         backgroundColor: AppColors.primary, // Blue background color
         foregroundColor: Colors.white, // White text and icons
@@ -1348,28 +1390,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.white.withAlpha(77), // White with opacity
-              // Show doctor image ONLY if current user is NOT admin
-              backgroundImage: !_isAdmin 
-                  ? const AssetImage('assets/images/profile_pictures/doctor-profile.jpg') 
-                  : null,
-              // Show user initial ONLY if current user IS admin
-              child: _isAdmin 
-                  ? Text(
-                      _displayPartnerName.isNotEmpty ? _displayPartnerName[0].toUpperCase() : '?', // Use partner name initial
-                      style: const TextStyle(
-                        color: Colors.white, // White text
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  : null, // No child text if showing doctor image
-              // Optional: Add error handling for image loading
-              // <<< Only provide error handler if image is being set >>>
-              onBackgroundImageError: !_isAdmin 
-                  ? (exception, stackTrace) {
-                AppLogger.e('Error loading doctor profile image in Chat AppBar: $exception');
-                // Keep the fallback background color if image fails
-                    } 
-                  : null, // Set to null when not using backgroundImage
+              // Always show first letter avatar for consistency
+              child: Text(
+                _displayPartnerName.isNotEmpty ? _displayPartnerName[0].toUpperCase() : '?', // Use partner name initial
+                style: const TextStyle(
+                  color: Colors.white, // White text
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             // <<< End Conditional Avatar Logic >>>
             const SizedBox(width: 12),
@@ -1377,8 +1405,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
               child: Column(
                 // <<< Align text to the start >>>
                 crossAxisAlignment: CrossAxisAlignment.start,
-                // <<< Center column content vertically (might not be needed with Row alignment) >>>
-                // mainAxisAlignment: MainAxisAlignment.center, 
                 children: [
                   Text(
                     _displayPartnerName,
@@ -1528,7 +1554,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
         centerTitle: false,
       ),
       body: SafeArea(
-        // --- Wrap body content with GestureDetector --- 
         child: GestureDetector(
           onTap: () {
             // Dismiss keyboard when tapping outside the TextField
@@ -1537,165 +1562,168 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
               FocusManager.instance.primaryFocus?.unfocus();
             }
           },
-        child: Column(
-          children: [
+          child: Column(
+            children: [
               // Messages list (Expanded remains inside Column)
-            Expanded(
-              child: Container(
-                // Use theme's scaffold background color for consistency
-                color: Theme.of(context).scaffoldBackgroundColor, 
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _messages.isEmpty
+              Expanded(
+                child: Container(
+                  // Use theme's scaffold background color for consistency
+                  color: Theme.of(context).scaffoldBackgroundColor, 
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _messages.isEmpty
                           ? Center(child: Text('chat.no_messages'.tr()))
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(8.0),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, index) {
-                              final message = _messages[index];
+                          : ListView.builder(
+                              controller: _scrollController,
+                              reverse: true, // Show latest messages at the bottom without scrolling animation
+                              padding: const EdgeInsets.all(8.0),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                // Reverse the index to show messages in correct order with reverse: true
+                                final adjustedIndex = _messages.length - 1 - index;
+                                final message = _messages[adjustedIndex];
                                 final currentUserId = FirebaseAuth.instance.currentUser?.uid; 
                                 final isMe = message.senderId == currentUserId;
-                              bool showDateHeader = false;
-                              if (index == 0 ||
-                                  !_isSameDay(
-                                      _messages[index - 1].createdAt, message.createdAt)) {
-                                showDateHeader = true;
-                              }
-                              return Column(
-                                children: [
-                                  if (showDateHeader)
-                                    _DateHeader(date: message.createdAt, formatDate: _formatDateHeader),
-                                  _MessageBubble(
-                                    message: message,
-                                    isMe: isMe,
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
+                                bool showDateHeader = false;
+                                if (adjustedIndex == 0 ||
+                                    !_isSameDay(
+                                        _messages[adjustedIndex - 1].createdAt, message.createdAt)) {
+                                  showDateHeader = true;
+                                }
+                                return Column(
+                                  children: [
+                                    if (showDateHeader)
+                                      _DateHeader(date: message.createdAt, formatDate: _formatDateHeader),
+                                    _MessageBubble(
+                                      message: message,
+                                      isMe: isMe,
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                ),
               ),
-            ),
-              // Input Area (remains at the bottom of the Column)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor, // Use theme card color
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(13),
-                    blurRadius: 5,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Attach button (conditional based on recording state)
-                  _isRecording 
-                    ? IconButton(
-                        icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), 
-                        tooltip: 'common.cancel'.tr(),
-                        onPressed: () {
-                            // <<< Add Haptic Tap >>>
-                            HapticUtils.lightTap();
-                            _stopRecording(cancelled: true);
-                        }, // Cancel recording
-                      )
-                    : IconButton(
-                        icon: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
-                        tooltip: 'common.attach'.tr(),
-                        onPressed: () {
-                            // <<< Add Haptic Tap >>>
-                            HapticUtils.lightTap();
-                            _showAttachmentOptions(context);
-                        }, // Show attachment options
-                      ),
-                  // Text input field (remains mostly the same)
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: () { // Use a function to determine hintText dynamically
-                          if (_isRecording) {
-                            final formattedDuration = '${_recordingDuration.inMinutes.toString().padLeft(2, '0')}:${(_recordingDuration.inSeconds % 60).toString().padLeft(2, '0')}';
-                            // Ensure the key 'chat.recording' in your translation files has "{}" placeholder
-                            return 'chat.recording'.tr(args: [formattedDuration]); 
-                          } else {
-                            return 'chat.send_message'.tr();
-                          }
-                        }(), // Immediately invoke the function
-                        hintStyle: TextStyle(color: Theme.of(context).hintColor),
-                        filled: true,
-                        fillColor: Theme.of(context).inputDecorationTheme.fillColor ?? AppColors.inputBackground,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(25.0),
-                          borderSide: BorderSide.none, 
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(25.0),
-                          borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(128)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(25.0),
-                          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                      ),
-                      enabled: !_isRecording, // Disable TextField while recording
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                      minLines: 1,
-                      maxLines: 5,
-                      // Add text direction to support RTL languages properly
-                      textDirection: Directionality.of(context),
-                      // Ensure text alignment matches text direction
-                      textAlign: TextAlign.start,
+              // Input area
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor, // Use theme card color
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(13),
+                      blurRadius: 5,
+                      offset: const Offset(0, -2),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Send or Record button (using onTap)
-                  isTextFieldEmpty
-                      ? FloatingActionButton(
-                          mini: true,
-                          tooltip: _isRecording ? 'chat.stop_recording'.tr() : 'chat.record_voice'.tr(),
-                          onPressed: () {
-                            // <<< Add Haptic Tap >>>
-                            HapticUtils.lightTap();
-                            if (_isRecording) {
-                              _stopRecording(cancelled: false); // Stop and send
-                            } else {
-                              _startRecording(); // Start recording
-                            }
-                          },
-                          backgroundColor: _isRecording ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
-                          elevation: 1,
-                          child: Icon(
-                            _isRecording ? Icons.stop : Icons.mic, // Change icon based on state
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            size: 20,
-                          ),
-                        )
-                      : FloatingActionButton(
-                          // Standard Send Button
-                          mini: true,
-                          tooltip: 'chat.send'.tr(),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Attach button (conditional based on recording state)
+                    _isRecording 
+                      ? IconButton(
+                          icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), 
+                          tooltip: 'common.cancel'.tr(),
                           onPressed: () {
                               // <<< Add Haptic Tap >>>
                               HapticUtils.lightTap();
-                              _sendMessage();
-                          },
-                          backgroundColor: AppColors.primary,
-                          elevation: 1,
-                          child: const Icon(Icons.send, color: Colors.white, size: 20),
+                              _stopRecording(cancelled: true);
+                          }, // Cancel recording
+                        )
+                      : IconButton(
+                          icon: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
+                          tooltip: 'common.attach'.tr(),
+                          onPressed: () {
+                              // <<< Add Haptic Tap >>>
+                              HapticUtils.lightTap();
+                              _showAttachmentOptions(context);
+                          }, // Show attachment options
                         ),
-                ],
+                    // Text input field (remains mostly the same)
+                    Expanded(
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: InputDecoration(
+                          hintText: () { // Use a function to determine hintText dynamically
+                            if (_isRecording) {
+                              final formattedDuration = '${_recordingDuration.inMinutes.toString().padLeft(2, '0')}:${(_recordingDuration.inSeconds % 60).toString().padLeft(2, '0')}';
+                              // Ensure the key 'chat.recording' in your translation files has "{}" placeholder
+                              return 'chat.recording'.tr(args: [formattedDuration]); 
+                            } else {
+                              return 'chat.send_message'.tr();
+                            }
+                          }(), // Immediately invoke the function
+                          hintStyle: TextStyle(color: Theme.of(context).hintColor),
+                          filled: true,
+                          fillColor: Theme.of(context).inputDecorationTheme.fillColor ?? AppColors.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25.0),
+                            borderSide: BorderSide.none, 
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25.0),
+                            borderSide: BorderSide(color: Theme.of(context).dividerColor.withAlpha(128)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25.0),
+                            borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                        ),
+                        enabled: !_isRecording, // Disable TextField while recording
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
+                        onTap: _handleKeyboardAppearance, // Handle keyboard appearance specifically
+                        minLines: 1,
+                        maxLines: 5,
+                        // Add text direction to support RTL languages properly
+                        textDirection: Directionality.of(context),
+                        // Ensure text alignment matches text direction
+                        textAlign: TextAlign.start,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Send or Record button (using onTap)
+                    isTextFieldEmpty
+                        ? FloatingActionButton(
+                            mini: true,
+                            tooltip: _isRecording ? 'chat.stop_recording'.tr() : 'chat.record_voice'.tr(),
+                            onPressed: () {
+                              // <<< Add Haptic Tap >>>
+                              HapticUtils.lightTap();
+                              if (_isRecording) {
+                                _stopRecording(cancelled: false); // Stop and send
+                              } else {
+                                _startRecording(); // Start recording
+                              }
+                            },
+                            backgroundColor: _isRecording ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
+                            elevation: 1,
+                            child: Icon(
+                              _isRecording ? Icons.stop : Icons.mic, // Change icon based on state
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              size: 20,
+                            ),
+                          )
+                        : FloatingActionButton(
+                            // Standard Send Button
+                            mini: true,
+                            tooltip: 'chat.send'.tr(),
+                            onPressed: () {
+                                // <<< Add Haptic Tap >>>
+                                HapticUtils.lightTap();
+                                _sendMessage();
+                            },
+                            backgroundColor: AppColors.primary,
+                            elevation: 1,
+                            child: const Icon(Icons.send, color: Colors.white, size: 20),
+                          ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        ),
-        // --- End GestureDetector Wrap ---
       ),
     );
   }
@@ -2139,89 +2167,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
     );
   }
 
-  // --- Info Sheet Implementation - REVISED TO MATCH MODEL ---
+  // --- Navigate to Patient Info Screen instead of showing a bottom sheet
   void _showPatientInfoSheet(PatientOnboardingData data) {
-    final age = data.age; 
-
-     showModalBottomSheet(
-        context: context,
-        isScrollControlled: true, 
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        backgroundColor: AppColors.surface, 
-        builder: (context) {
-           return DraggableScrollableSheet(
-             expand: false, initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.9, 
-             builder: (_, scrollController) {
-                 return Container(
-                    child: ListView( 
-                     controller: scrollController,
-                     padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: MediaQuery.of(context).padding.bottom + 16), 
-                      children: [
-                         // Drag Handle
-                          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-                         
-                         // Header with Basic Info
-                         Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              CircleAvatar(
-                                radius: 32, 
-                                backgroundColor: AppColors.primary.withAlpha(51),
-                                child: Text( // Always show initial
-                                  data.name.isNotEmpty ? data.name[0].toUpperCase() : 'P',
-                                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primary)
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(data.name, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                                    if (age != null || data.gender != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4.0),
-                                        child: Text(
-                                          '${data.gender ?? ''}${data.gender != null && age != null ? ', ' : ''}${age != null ? '$age years old' : ''}', 
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                         const Divider(height: 24),
-                         
-                         // --- ADDED: Vitals & Location to Sheet --- 
-                         Padding(
-                           padding: const EdgeInsets.only(bottom: 12.0),
-                           child: _buildVitalsLocationRow(data),
-                         ),
-                         // --- END: Vitals & Location to Sheet ---
-
-                         // Detailed Sections
-                         if (data.conditions.isNotEmpty)
-                            _buildIntroSection(context, title: 'Conditions', icon: Icons.monitor_heart_outlined, items: data.conditions),
-                         if (data.otherConditions != null && data.otherConditions!.isNotEmpty)
-                           _buildIntroSection(context, title: 'Other Conditions', icon: Icons.help_outline_rounded, items: [data.otherConditions!]),
-                         if (data.surgicalHistory != null && data.surgicalHistory!.toLowerCase() != 'none')
-                           _buildIntroSection(context, title: 'Surgical History', icon: Icons.healing_outlined, items: [data.surgicalHistory!]),
-                           if (data.medications != null && data.medications!.toLowerCase() != 'none')
-                             _buildIntroSection(context, title: 'Current Medications', icon: Icons.medication_outlined, items: [data.medications!]),
-                           if (data.allergies != null && data.allergies!.toLowerCase() != 'none')
-                             _buildIntroSection(context, title: 'Reported Allergies', icon: Icons.warning_amber_rounded, items: [data.allergies!], useErrorColor: true), // <<< Use flag instead of itemColor
-                           if (data.documents.isNotEmpty)
-                             _buildIntroSection(context, title: 'Uploaded Documents', icon: Icons.attach_file_outlined, isDocumentList: true, documentItems: data.documents),
-                           
-                         const SizedBox(height: 20), 
-                      ],
-                   ),
-                 );
-              },
-           );
-         },
-     );
+    context.pushNamed(
+      RouteNames.patientInfo,
+      extra: data,
+    );
   }
 }
 

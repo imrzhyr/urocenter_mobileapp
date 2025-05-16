@@ -144,25 +144,30 @@ class AppDateUtils {
     final now = DateTime.now();
     final difference = now.difference(date);
     
-    if (difference.inDays > 365) {
-      // More than a year ago
-      return formatFullDate(date);
-    } else if (difference.inDays > 6) {
-      // More than a week ago
-      return formatShortDate(date);
-    } else if (difference.inDays > 0) {
-      // More than a day ago but less than a week
-      final weekday = DateFormat.E().format(date);
-      return '$weekday, ${formatTime(date)}';
-    } else if (difference.inHours > 0) {
-      // Today but more than an hour ago
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      // Less than an hour ago
-      return '${difference.inMinutes}m ago';
-    } else {
-      // Just now
+    if (difference.inSeconds < 0) {
+      // Future date or clock skew issue - fallback to formatted time
+      return formatTime(date);
+    } else if (difference.inSeconds < 60) {
+      // Just now (less than a minute ago)
       return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      // Minutes
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      // Hours
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      // Days, but less than a week
+      return '${difference.inDays}d ago';
+    } else if (difference.inDays < 30) {
+      // Weeks, but less than a month
+      return '${(difference.inDays / 7).floor()}w ago';
+    } else if (difference.inDays < 365) {
+      // Months, but less than a year
+      return DateFormat.MMMd().format(date);
+    } else {
+      // Over a year ago
+      return DateFormat.yMMMd().format(date);
     }
   }
 } 

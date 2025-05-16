@@ -1,19 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-import '../../../app/routes.dart';
-import '../../../core/theme/theme.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/models/user_model.dart' as UserModel;
+import '../../../core/models/user_model.dart' as user_model;
 import '../../../core/utils/haptic_utils.dart';
 import 'package:urocenter/core/utils/logger.dart';
-import 'package:easy_localization/easy_localization.dart';
-import 'admin_dashboard.dart';
+import '../../../core/widgets/app_bar_style2.dart' show AppBarStyle2, FilterOption;
+import '../../../core/widgets/chat_list_item_style2.dart';
+import '../../../core/widgets/empty_state_style2.dart';
+import '../../../core/widgets/animated_item_list_style2.dart';
+import '../../../core/widgets/shimmer_loading_list_style2.dart';
+import '../../../app/routes.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/utils/date_utils.dart';
-import '../../../core/widgets/shimmer_loading.dart';
+
+// For date formatting
+class DateTimeFormatter {
+  static String formatChatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays == 0) {
+      // Today: show time in 12h format
+      return DateFormat('h:mm a').format(dateTime); // 12-hour with AM/PM
+    } else if (difference.inDays == 1) {
+      // Yesterday
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      // Within a week
+      return DateFormat('EEEE').format(dateTime); // Day name
+    } else {
+      // Older
+      return DateFormat('MM/dd/yy').format(dateTime); // MM/DD/YY format
+    }
+  }
+}
 
 // --- Moved Models/Enums specific to this screen ---
 
@@ -42,7 +62,7 @@ class ChatSession {
     required this.status,
   });
 
-  factory ChatSession.fromSnapshot(DocumentSnapshot doc, UserModel.User otherUserDetails) {
+  factory ChatSession.fromSnapshot(DocumentSnapshot doc, user_model.User otherUserDetails) {
     final data = doc.data() as Map<String, dynamic>;
     const status = ChatStatus.active;
     
@@ -62,7 +82,13 @@ class ChatSession {
 
 // --- End Moved Models/Enums ---
 
+// Add cached data provider for consultations with a better update mechanism
+final consultationCacheProvider = StateProvider<Map<String, List<Map<String, dynamic>>>>((ref) => {});
+
 final adminConsultationsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, status) {
+  // Get the cache map
+  final cacheMap = ref.read(consultationCacheProvider);
+  
   // Base query for chats
   Query query = FirebaseFirestore.instance
       .collection('chats')
@@ -74,9 +100,24 @@ final adminConsultationsProvider = StreamProvider.family<List<Map<String, dynami
     final firestoreStatus = (status == 'completed') ? 'resolved' : status;
     query = query.where('status', isEqualTo: firestoreStatus);
   }
-  
+
+  // Return stream from Firestore
   return query.snapshots().asyncMap((snapshot) async {
     final List<Map<String, dynamic>> consultations = [];
+    
+    // Check if we should use cache first (only if snapshot is empty)
+    if (snapshot.docs.isEmpty && cacheMap.containsKey(status)) {
+      AppLogger.d('Using cached data for status: $status');
+      return cacheMap[status]!;
+    }
+    
+    // Log for debugging empty results
+    AppLogger.d('Firestore query returned ${snapshot.docs.length} documents');
+    
+    if (snapshot.docs.isEmpty) {
+      AppLogger.d('No chats found in Firestore');
+      return [];
+    }
     
     for (var doc in snapshot.docs) {
       final data = doc.data() as Map<String, dynamic>;
@@ -86,7 +127,6 @@ final adminConsultationsProvider = StreamProvider.family<List<Map<String, dynami
       
       // Assuming one participant is the patient, could be enhanced to explicitly identify roles
       String patientId = '';
-      String doctorId = '';
       
       // Simple logic to identify patient/doctor - could be improved with proper role identification
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
@@ -121,7 +161,8 @@ final adminConsultationsProvider = StreamProvider.family<List<Map<String, dynami
           'id': doc.id,
           'patientId': patientId,
           'patientName': patientData['fullName'] as String? ?? 'Unknown Patient',
-          'doctorName': 'Dr. Admin', // This should come from the doctor document
+          'otherUserId': patientId, // This is required for chat navigation
+          'otherUserName': patientData['fullName'] as String? ?? 'Unknown Patient', // This is required for chat navigation
           'lastMessageTime': lastMessageTime,
           'lastMessageContent': lastMessageContent,
           'lastSenderId': lastSenderId,
@@ -132,6 +173,13 @@ final adminConsultationsProvider = StreamProvider.family<List<Map<String, dynami
       } catch (e) {
         AppLogger.e('Error fetching patient details for chat ${doc.id}: $e');
       }
+    }
+    
+    // Update cache non-reactively, only if we got data from Firestore
+    if (consultations.isNotEmpty) {
+      final newCache = Map<String, List<Map<String, dynamic>>>.from(cacheMap);
+      newCache[status] = consultations;
+      ref.read(consultationCacheProvider.notifier).state = newCache;
     }
     
     return consultations;
@@ -148,467 +196,279 @@ class AdminConsultationsScreen extends ConsumerStatefulWidget {
 
 class _AdminConsultationsScreenState extends ConsumerState<AdminConsultationsScreen> with TickerProviderStateMixin {
   late TabController _tabController;
-  String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
-  
-  // Animation controllers
-  late AnimationController _fadeController;
+  String _searchQuery = '';
+  bool _showFilters = false;
+  String _selectedFilter = 'all';
   
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(_handleTabChange);
-    
-    // Initialize animation controllers
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _fadeController.forward();
-  }
-
-  void _handleTabChange() {
-    if (_tabController.indexIsChanging) {
-      _fadeController.reset();
-      _fadeController.forward();
-    }
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      // Only trigger if the tab change is user-initiated
+      if (!_tabController.indexIsChanging) {
+      setState(() {
+          // Clear filters when switching tabs
+          _showFilters = false;
+          _selectedFilter = 'all';
+          _searchQuery = '';
+          _searchController.clear();
+        });
+        }
+      });
   }
 
   @override
   void dispose() {
-    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _searchController.dispose();
-    _fadeController.dispose();
     super.dispose();
   }
 
-  Future<void> _refreshData() async {
-    // Just rebuild widget via state change to trigger stream refresh
-    setState(() {});
-    
-    // Reset animations
-    _fadeController.reset();
-    _fadeController.forward();
-    
-    // Add a small delay for visual feedback
-    await Future.delayed(const Duration(milliseconds: 300));
+  void _toggleFilters() {
+    setState(() {
+      _showFilters = !_showFilters;
+    });
+    HapticUtils.lightTap();
+  }
+  
+  void _applyFilter(String filter) {
+    setState(() {
+      _selectedFilter = filter;
+      // Don't hide filters when a filter is selected
+    });
+    HapticUtils.lightTap();
+  }
+  
+  void _onSearch(String query) {
+    setState(() {
+      _searchQuery = query;
+    });
+  }
+  
+  String _getConsultationStatus() {
+    // Map tab index to status
+    if (_tabController.index == 0) {
+      return 'active';
+    } else {
+      return 'completed';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final theme = Theme.of(context);
+    
+    // Define filter options for the AppBarStyle2
+    final List<FilterOption> filterOptions = [
+      const FilterOption(value: 'all', label: 'All'),
+      const FilterOption(value: 'urgent', label: 'Urgent'),
+      const FilterOption(value: 'unread', label: 'Unread'),
+      const FilterOption(value: 'today', label: 'Today'),
+      const FilterOption(value: 'this_week', label: 'This Week'),
+    ];
+    
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text(
-          'Consultations'.tr(),
-          style: Theme.of(context).appBarTheme.titleTextStyle,
-        ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-        elevation: Theme.of(context).appBarTheme.elevation,
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.notifications_outlined, color: Theme.of(context).appBarTheme.actionsIconTheme?.color),
-            tooltip: 'profile.notifications'.tr(),
-            onPressed: () {
-              HapticUtils.lightTap();
-              context.pushNamed(RouteNames.notifications);
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.settings_outlined, color: Theme.of(context).appBarTheme.actionsIconTheme?.color),
-            tooltip: 'settings.title'.tr(),
-            onPressed: () {
-              HapticUtils.lightTap();
-              context.pushNamed(RouteNames.settings);
-            },
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Theme.of(context).colorScheme.primary,
-          labelColor: Theme.of(context).colorScheme.primary,
-          unselectedLabelColor: Theme.of(context).unselectedWidgetColor,
-          tabs: [
-            Tab(text: 'Active'.tr()),
-            Tab(text: 'Completed'.tr()),
-            Tab(text: 'All'.tr()),
-          ],
-        ),
-      ),
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Column(
         children: [
-          AnimationConfiguration.synchronized(
-            duration: const Duration(milliseconds: 400),
-            child: SlideAnimation(
-              verticalOffset: 50.0,
-              child: FadeInAnimation(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-                    child: TextField(
-                      controller: _searchController,
-                      style: TextStyle(color: theme.colorScheme.onSurface),
-                      decoration: InputDecoration(
-                        hintText: 'Search consultations...'.tr(),
-                        hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: Icon(Icons.clear, color: theme.colorScheme.onSurfaceVariant),
-                                onPressed: () {
-                                  HapticUtils.lightTap();
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                      ),
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                  ),
-                ),
-              ),
-            ),
+          // Use the AppBarStyle2 component
+          AppBarStyle2(
+            title: "Consultations",
+            showSearch: true,
+            showFilters: true,
+            filtersExpanded: _showFilters,
+            searchController: _searchController,
+            onSearchChanged: _onSearch,
+            onFilterToggle: _toggleFilters,
+            filterOptions: filterOptions,
+            selectedFilter: _selectedFilter,
+            onFilterSelected: _applyFilter,
+            searchHint: "Search consultations",
           ),
-          Expanded(
-            child: RefreshIndicator(
-              key: _refreshIndicatorKey,
-              color: AppColors.primary,
-              backgroundColor: Colors.white,
-              onRefresh: _refreshData,
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  FadeTransition(
-                    opacity: _fadeController,
-                    child: _buildConsultationsList('active'),
-                  ),
-                  FadeTransition(
-                    opacity: _fadeController,
-                    child: _buildConsultationsList('completed'),
-                  ),
-                  FadeTransition(
-                    opacity: _fadeController,
-                    child: _buildConsultationsList('all'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConsultationsList(String status) {
-    final consultationsAsync = ref.watch(adminConsultationsProvider(status));
-    
-    return consultationsAsync.when(
-      data: (consultations) {
-        // Filter results based on search query
-        final filteredConsultations = _searchQuery.isEmpty 
-            ? consultations 
-            : consultations.where((consultation) {
-                final query = _searchQuery.toLowerCase();
-                final patientName = (consultation['patientName'] as String).toLowerCase();
-                final doctorName = (consultation['doctorName'] as String).toLowerCase();
-                final id = consultation['id'] as String;
-                
-                return patientName.contains(query) || 
-                       doctorName.contains(query) || 
-                       id.contains(query);
-              }).toList();
-        
-        if (filteredConsultations.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.search_off,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _searchQuery.isEmpty 
-                      ? 'admin.no_consultations_found'.tr()
-                      : 'admin.no_consultations_match'.tr(namedArgs: {'query': _searchQuery}),
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16)
-                ),
-              ],
-            ),
-          );
-        }
-        
-        return AnimationLimiter(
-          child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
-            itemCount: filteredConsultations.length,
-            itemBuilder: (context, index) {
-              final consultation = filteredConsultations[index];
-              
-              return AnimationConfiguration.staggeredList(
-                position: index,
-                duration: const Duration(milliseconds: 375),
-                child: SlideAnimation(
-                  verticalOffset: 50.0,
-                  child: FadeInAnimation(
-                    child: _buildConsultationCard(consultation),
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
-      error: (error, stack) {
-        AppLogger.e('Error loading consultations: $error');
-        return _buildErrorView('Error loading consultations'.tr());
-      },
-      loading: () => _buildLoadingShimmer(),
-    );
-  }
-  
-  Widget _buildConsultationCard(Map<String, dynamic> consultation) {
-    final theme = Theme.of(context);
-    final chatId = consultation['id'] as String;
-    final patientName = consultation['patientName'] as String;
-    final lastMessageTime = consultation['lastMessageTime'] as DateTime;
-    final unreadMessages = consultation['unreadCount'] as int;
-    final status = consultation['status'] as String;
-    final isUrgent = consultation['isUrgent'] as bool;
-    final isDark = theme.brightness == Brightness.dark;
-
-    final statusColor = status == 'active' 
-        ? Colors.green 
-        : (status == 'completed' ? theme.colorScheme.primary : Colors.orange);
-    final urgentColor = Colors.red;
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () {
-          HapticUtils.lightTap();
-          AppLogger.d("Viewing consultation: $chatId");
-          context.pushNamed(
-            RouteNames.userChat,
-            extra: {
-              'chatId': chatId,
-              'otherUserId': consultation['patientId'],
-              'otherUserName': patientName,
-            },
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Hero(
-                    tag: 'patient-avatar-$chatId',
-                    child: CircleAvatar(
-                      radius: 24,
-                      backgroundColor: theme.colorScheme.primaryContainer.withOpacity(isDark ? 0.7 : 0.5),
-                      child: Text(
-                        patientName.isNotEmpty ? patientName[0].toUpperCase() : 'P',
-                        style: TextStyle(
-                          color: theme.colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                patientName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Text(
-                              AppDateUtils.formatRelativeTime(lastMessageTime),
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          consultation['lastMessageContent'] as String? ?? 'No message'.tr(),
-                          style: TextStyle(
-                            color: unreadMessages > 0 
-                              ? theme.colorScheme.onSurface 
-                              : theme.colorScheme.onSurfaceVariant,
-                            fontSize: 14,
-                            fontWeight: unreadMessages > 0 
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      status.capitalize(),
-                      style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  if (isUrgent)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: urgentColor.withAlpha(26),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.priority_high,
-                              color: urgentColor,
-                              size: 12,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Urgent'.tr(),
-                              style: TextStyle(
-                                color: urgentColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (unreadMessages > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '$unreadMessages new',
-                          style: TextStyle(
-                            color: theme.colorScheme.onPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+          
+          const SizedBox(height: 16),
+          
+          // Tab bar for Active/Completed consultations
+          TabBar(
+            controller: _tabController,
+            labelColor: theme.colorScheme.primary,
+            unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+            indicatorColor: theme.colorScheme.primary,
+            indicatorSize: TabBarIndicatorSize.label,
+            tabs: [
+              Tab(text: "Active".tr()),
+              Tab(text: "Completed".tr()),
             ],
           ),
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildLoadingShimmer() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: 5,
-      itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: ShimmerLoading(
-            child: Container(
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        );
-      }
-    );
-  }
-  
-  Widget _buildErrorView(String message) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 60,
-            color: theme.colorScheme.error.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 16),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.refresh),
-            label: Text('Try Again'.tr()),
-            onPressed: _refreshData,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+          
+          // Tab content with StreamBuilder
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Active consultations tab
+                _buildConsultationsList(context, 'active', isDarkMode),
+                
+                // Completed consultations tab
+                _buildConsultationsList(context, 'completed', isDarkMode),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildConsultationsList(BuildContext context, String status, bool isDarkMode) {
+    // Get the consultations stream
+    final consultationsStream = ref.watch(adminConsultationsProvider(status));
+        
+    return consultationsStream.when(
+          data: (consultations) {
+        // Filter consultations based on search and filters
+        var filteredConsultations = _filterConsultations(consultations, _searchQuery, _selectedFilter);
+            
+            if (filteredConsultations.isEmpty) {
+          return _buildEmptyState(context, status, _searchQuery, _selectedFilter);
+        }
+        
+        return AnimatedItemListStyle2<Map<String, dynamic>>(
+          items: filteredConsultations,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          itemBuilder: (context, consultation, index) {
+            return _buildConsultationCard(context, consultation, isDarkMode);
+                },
+            );
+          },
+      loading: () => const ShimmerLoadingListStyle2(
+        itemCount: 6,
+        itemHeight: 90,
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+      ),
+      error: (error, stack) {
+        AppLogger.e('Error loading consultations: $error');
+        return _buildErrorState(error.toString());
+      },
+    );
+  }
+  
+  Widget _buildConsultationCard(BuildContext context, Map<String, dynamic> consultation, bool isDarkMode) {
+    final lastMessageTime = consultation['lastMessageTime'] as DateTime;
+    final formattedTime = DateTimeFormatter.formatChatTime(lastMessageTime);
+    final unreadCount = consultation['unreadCount'] as int;
+    final isUrgent = consultation['isUrgent'] as bool;
+    final status = consultation['status'] as String;
+    
+    return ChatListItemStyle2(
+      name: consultation['patientName'],
+      lastMessage: consultation['lastMessageContent'],
+      timeString: formattedTime,
+      unreadCount: unreadCount,
+      isUrgent: isUrgent,
+      status: status,
+      statusDisplay: status == 'active' ? 'Active' : 'Completed',
+      routeName: RouteNames.userChat,
+      routeExtra: consultation,
+    );
+  }
+  
+  Widget _buildEmptyState(BuildContext context, String status, String searchQuery, String selectedFilter) {
+    final bool isSearching = searchQuery.isNotEmpty || selectedFilter != 'all';
+    
+    final String message = isSearching 
+      ? 'No consultations match your search'
+      : status == 'active'
+          ? 'No active consultations'
+          : 'No completed consultations';
+    
+    final String suggestion = isSearching 
+      ? 'Try changing your search or filter'
+      : status == 'active'
+          ? 'New consultations will appear here'
+          : 'Completed consultations will appear here';
+    
+    final IconData icon = isSearching 
+        ? Icons.search_off
+        : status == 'active' 
+            ? Icons.chat_bubble_outline
+            : Icons.check_circle_outline;
+    
+    return EmptyStateStyle2(
+      icon: icon,
+      message: message,
+      suggestion: suggestion,
+      buttonText: isSearching ? 'Clear Filters' : null,
+      buttonIcon: isSearching ? Icons.clear : null,
+      onButtonPressed: isSearching ? () {
+        _searchController.clear();
+        setState(() {
+          _searchQuery = '';
+          _selectedFilter = 'all';
+          _showFilters = false;
+        });
+      } : null,
+    );
+  }
+  
+  Widget _buildErrorState(String errorMessage) {
+    return EmptyStateStyle2(
+      icon: Icons.error_outline,
+      message: 'Something went wrong',
+      suggestion: errorMessage,
+      buttonText: 'Try Again',
+      buttonIcon: Icons.refresh,
+      onButtonPressed: () {
+        // Refresh the data with proper handling of the result
+        final _ = ref.refresh(adminConsultationsProvider(_getConsultationStatus()));
+      },
+    );
+  }
+
+  List<Map<String, dynamic>> _filterConsultations(
+    List<Map<String, dynamic>> consultations, 
+    String searchQuery, 
+    String filterType
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final startOfWeek = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    
+    // First apply search query
+    var result = searchQuery.isEmpty 
+        ? consultations 
+        : consultations.where((c) {
+            final patientName = c['patientName'].toString().toLowerCase();
+            final lastMessage = c['lastMessageContent'].toString().toLowerCase();
+            final searchLower = searchQuery.toLowerCase();
+            
+            return patientName.contains(searchLower) || 
+                   lastMessage.contains(searchLower);
+          }).toList();
+    
+    // Then apply filter
+    switch (filterType) {
+      case 'urgent':
+        return result.where((c) => c['isUrgent'] == true).toList();
+      case 'unread':
+        return result.where((c) => (c['unreadCount'] as int) > 0).toList();
+      case 'today':
+        return result.where((c) {
+          final messageTime = c['lastMessageTime'] as DateTime;
+          return messageTime.isAfter(today);
+        }).toList();
+      case 'this_week':
+        return result.where((c) {
+          final messageTime = c['lastMessageTime'] as DateTime;
+          return messageTime.isAfter(startOfWeek);
+        }).toList();
+      case 'all':
+      default:
+        return result;
+    }
   }
 }
 

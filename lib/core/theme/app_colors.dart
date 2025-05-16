@@ -24,8 +24,9 @@ class AppColors {
   static const Color surfaceContainerHighest = Color(0xFFE5E7EB); // Added to fix errors
   static const Color card = Colors.white;
   static const Color divider = Color(0xFFE5E7EB);
-  static const Color inputBackground = Color(0xFFF3F4F6);
+  static const Color inputBackground = Color(0xFFEBEDF0); // Updated for better contrast in light mode
   static const Color inputBorder = Color(0xFFD1D5DB);
+  static const Color searchBorder = Color(0xFFCFD5E3); // New border color for search fields
   
   // Status colors
   static const Color success = Color(0xFF22C55E);

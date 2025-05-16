@@ -29,8 +29,9 @@ class EmptyState extends StatelessWidget {
     
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
@@ -38,7 +39,7 @@ class EmptyState extends StatelessWidget {
               size: 80,
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 128.0),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Text(
               title,
               style: theme.textTheme.titleLarge,

@@ -25,6 +25,7 @@ import '../features/user/screens/medical_history_view_screen.dart';
 import '../features/user/screens/document_management_screen.dart';
 import '../features/chat/screens/fullscreen_image_viewer.dart';
 import '../features/chat/screens/pdf_viewer_screen.dart';
+import '../features/chat/screens/patient_info_screen.dart';
 import '../features/settings/screens/about_screen.dart';
 import '../features/settings/screens/terms_screen.dart';
 import '../features/settings/screens/privacy_policy_screen.dart';
@@ -83,6 +84,8 @@ class RouteNames {
   static const String imageViewer = 'imageViewer';
   /// PDF Viewer
   static const String pdfViewer = 'pdfViewer';
+  /// Patient Info Screen
+  static const String patientInfo = 'patientInfo';
   
   /// Admin dashboard screen
   static const String adminDashboard = 'admin';
@@ -452,6 +455,21 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
             direction: SlideDirection.fromBottom, // Example transition
             child: CallScreen(
               extraData: state.extra as Map<String, dynamic>?,
+            ),
+          );
+        },
+      ),
+      
+      // Add Patient Info Screen Route
+      GoRoute(
+        path: '/patient-info',
+        name: RouteNames.patientInfo,
+        pageBuilder: (context, state) {
+          return PageTransitions.slideTransition(
+            context: context,
+            state: state,
+            child: PatientInfoScreen(
+              data: state.extra as PatientOnboardingData,
             ),
           );
         },

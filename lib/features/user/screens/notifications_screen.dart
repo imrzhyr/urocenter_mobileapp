@@ -8,6 +8,7 @@ import '../../../core/models/notification_model.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../providers/service_providers.dart';
 import '../../../app/routes.dart';
+import '../../../core/widgets/app_bar_style2.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -24,61 +25,87 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor,
-        title: Text('profile.notifications'.tr()),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: theme.appBarTheme.iconTheme?.color),
-          tooltip: 'common.back'.tr(),
-          onPressed: () {
-            HapticUtils.lightTap();
-            context.pop();
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.done_all, color: theme.appBarTheme.actionsIconTheme?.color),
-            tooltip: 'Mark all as read',
-            onPressed: () {
+      body: Column(
+        children: [
+          AppBarStyle2(
+            title: 'profile.notifications'.tr(),
+            showBackButton: true,
+            showActionButtons: false,
+            showSearch: false,
+            showFilters: false,
+            onBackPressed: () {
               HapticUtils.lightTap();
-              ref.read(notificationServiceProvider).markAllAsRead();
+              context.pop();
             },
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: notificationsAsyncValue.when(
-          loading: () => Center(
-            child: CircularProgressIndicator(color: theme.colorScheme.primary)
-          ),
-          error: (error, stackTrace) => Center(
-            child: Text('Error loading notifications: $error'),
-          ),
-          data: (notifications) {
-            if (notifications.isEmpty) {
-              return const EmptyState(
-                icon: Icons.notifications_none,
-                title: 'No notifications',
-                message: 'You don\'t have any notifications yet',
-              );
-            }
-            
-            return RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(notificationsStreamProvider);
-              },
-              color: theme.colorScheme.primary,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: notifications.length,
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  return _buildNotificationCard(notification);
-                },
+          Expanded(
+            child: notificationsAsyncValue.when(
+              loading: () => Center(
+                child: CircularProgressIndicator(color: theme.colorScheme.primary)
               ),
-            );
-          }
-        ),
+              error: (error, stackTrace) => Center(
+                child: Text('Error loading notifications: $error'),
+              ),
+              data: (notifications) {
+                if (notifications.isEmpty) {
+                  // Force the empty state to be centered in the available space
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: constraints.maxHeight,
+                          child: const Center(
+                            child: EmptyState(
+                              icon: Icons.notifications_none,
+                              title: 'No notifications',
+                              message: 'You don\'t have any notifications yet',
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  );
+                }
+                
+                return Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(notificationsStreamProvider);
+                      },
+                      color: theme.colorScheme.primary,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        itemCount: notifications.length,
+                        itemBuilder: (context, index) {
+                          final notification = notifications[index];
+                          return _buildNotificationCard(notification);
+                        },
+                      ),
+                    ),
+                    
+                    // Mark all as read button
+                    Positioned(
+                      bottom: 16,
+                      right: 16,
+                      child: FloatingActionButton(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        tooltip: 'Mark all as read',
+                        child: const Icon(Icons.done_all),
+                        onPressed: () {
+                          HapticUtils.lightTap();
+                          ref.read(notificationServiceProvider).markAllAsRead();
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              }
+            ),
+          ),
+        ],
       ),
     );
   }

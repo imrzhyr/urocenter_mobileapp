@@ -12,6 +12,7 @@ import '../../../core/utils/haptic_utils.dart';
 import '../../../providers/theme_provider.dart';
 import '../../../core/widgets/language_selector.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import '../../../core/widgets/app_bar_style2.dart';
 
 /// Settings screen for user account
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -53,239 +54,206 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor,
-        title: Text('settings.title'.tr()),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: theme.appBarTheme.iconTheme?.color),
-          tooltip: 'common.back'.tr(),
-          onPressed: () {
-            HapticUtils.lightTap();
-            context.pop();
-          },
-        ),
-      ),
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'settings.account_settings'.tr(),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Account settings
-              _buildSettingsCard(
-                context: context,
-                children: [
-                  if (_hasEmailPassword) 
-                    _buildSettingsTile(
-                      context: context,
-                      title: 'settings.change_password'.tr(),
-                      icon: Icons.lock_outline,
-                      onTap: () {
-                        _showChangePasswordDialog();
-                      },
-                    ),
-                  if (_hasEmailPassword)
-                    Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.notifications'.tr(),
-                    icon: Icons.notifications_none,
-                    trailing: Switch(
-                      value: _notificationsEnabled,
-                      onChanged: (value) {
-                        HapticUtils.selection();
-                        setState(() {
-                          _notificationsEnabled = value;
-                        });
-                        _updateNotificationSettings(value);
-                      },
-                      activeColor: theme.colorScheme.primary,
-                      thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
-                        (Set<WidgetState> states) {
-                          if (states.contains(WidgetState.selected)) {
-                            return const Icon(Icons.notifications_active);
-                         }
-                          return const Icon(Icons.notifications_off);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              Text(
-                'settings.app_settings'.tr(),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // App settings
-              _buildSettingsCard(
-                context: context,
-                children: [
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.language'.tr(),
-                    icon: Icons.language,
-                    subtitle: currentLanguage,
-                    onTap: () {
-                      // Use the reusable language selector component
-                      const LanguageSelector().showLanguagePicker(context);
-                    },
-                  ),
-                  Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.dark_mode'.tr(),
-                    icon: Icons.dark_mode_outlined,
-                    trailing: Switch(
-                      value: themeMode == ThemeMode.dark,
-                      onChanged: (value) {
-                        HapticUtils.selection();
-                        ref.read(themeModeProvider.notifier).toggleThemeMode();
-                      },
-                      activeColor: theme.colorScheme.primary,
-                      thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
-                        (Set<WidgetState> states) {
-                          if (states.contains(WidgetState.selected)) {
-                            return const Icon(Icons.dark_mode);
-                         }
-                          return const Icon(Icons.light_mode);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              Text(
-                'settings.about_section'.tr(),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // About settings
-              _buildSettingsCard(
-                context: context,
-                children: [
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.about'.tr(),
-                    icon: Icons.info_outline,
-                    onTap: () {
-                      context.pushNamed(RouteNames.about);
-                    },
-                  ),
-                  Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.terms_conditions'.tr(),
-                    icon: Icons.description_outlined,
-                    onTap: () {
-                      context.pushNamed(RouteNames.terms);
-                    },
-                  ),
-                  Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
-                  _buildSettingsTile(
-                    context: context,
-                    title: 'settings.privacy_policy'.tr(),
-                    icon: Icons.privacy_tip_outlined,
-                    onTap: () {
-                      context.pushNamed(RouteNames.privacyPolicy);
-                    },
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Sign out button
-              Container(
-                width: double.infinity,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: theme.colorScheme.error,
-                    width: 2,
-                  ),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    splashColor: theme.colorScheme.error.withAlpha(26),
-                    highlightColor: Colors.transparent,
-                    onTap: () {
-                      HapticUtils.lightTap();
-                      _showSignOutDialog();
-                    },
-                    child: Center(
-                      child: Text(
-                        'auth.sign_out'.tr(),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: theme.colorScheme.error,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              
-              // Delete account button
-              Container(
-                width: double.infinity,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.error.withAlpha(179),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    splashColor: theme.colorScheme.error.withAlpha(51),
-                    highlightColor: theme.colorScheme.error.withAlpha(26),
-                    onTap: () {
-                      HapticUtils.lightTap();
-                      _showDeleteAccountDialog();
-                    },
-                    child: Center(
-                      child: Text(
-                        'settings.delete_account'.tr(),
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: theme.colorScheme.onError,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+      body: Column(
+        children: [
+          AppBarStyle2(
+            title: 'settings.title'.tr(),
+            showBackButton: true,
+            showActionButtons: false,
+            showSearch: false,
+            showFilters: false,
           ),
-        ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'settings.account_settings'.tr(),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Account settings
+                  _buildSettingsCard(
+                    context: context,
+                    children: [
+                      if (_hasEmailPassword) 
+                        _buildSettingsTile(
+                          context: context,
+                          title: 'settings.change_password'.tr(),
+                          icon: Icons.lock_outline,
+                          onTap: () {
+                            _showChangePasswordDialog();
+                          },
+                        ),
+                      if (_hasEmailPassword)
+                        Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.notifications'.tr(),
+                        icon: Icons.notifications_none,
+                        trailing: Switch(
+                          value: _notificationsEnabled,
+                          onChanged: (value) {
+                            HapticUtils.selection();
+                            setState(() {
+                              _notificationsEnabled = value;
+                            });
+                            _updateNotificationSettings(value);
+                          },
+                          activeColor: theme.colorScheme.primary,
+                          thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
+                            (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return const Icon(Icons.notifications_active);
+                             }
+                              return const Icon(Icons.notifications_off);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  Text(
+                    'settings.app_settings'.tr(),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // App settings
+                  _buildSettingsCard(
+                    context: context,
+                    children: [
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.language'.tr(),
+                        icon: Icons.language,
+                        subtitle: currentLanguage,
+                        onTap: () {
+                          // Use the reusable language selector component
+                          const LanguageSelector().showLanguagePicker(context);
+                        },
+                      ),
+                      Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.dark_mode'.tr(),
+                        icon: Icons.dark_mode_outlined,
+                        trailing: Switch(
+                          value: themeMode == ThemeMode.dark,
+                          onChanged: (value) {
+                            HapticUtils.selection();
+                            ref.read(themeModeProvider.notifier).toggleThemeMode();
+                          },
+                          activeColor: theme.colorScheme.primary,
+                          thumbIcon: WidgetStateProperty.resolveWith<Icon?>(
+                            (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.selected)) {
+                                return const Icon(Icons.dark_mode);
+                             }
+                              return const Icon(Icons.light_mode);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  Text(
+                    'settings.about_section'.tr(),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // About settings
+                  _buildSettingsCard(
+                    context: context,
+                    children: [
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.about'.tr(),
+                        icon: Icons.info_outline,
+                        onTap: () {
+                          context.pushNamed(RouteNames.about);
+                        },
+                      ),
+                      Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.terms_conditions'.tr(),
+                        icon: Icons.description_outlined,
+                        onTap: () {
+                          context.pushNamed(RouteNames.terms);
+                        },
+                      ),
+                      Divider(height: 1, indent: 56, endIndent: 0, color: theme.dividerColor),
+                      _buildSettingsTile(
+                        context: context,
+                        title: 'settings.privacy_policy'.tr(),
+                        icon: Icons.privacy_tip_outlined,
+                        onTap: () {
+                          context.pushNamed(RouteNames.privacyPolicy);
+                        },
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Sign out button
+                  Container(
+                    width: double.infinity,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: theme.colorScheme.error,
+                        width: 2,
+                      ),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        splashColor: theme.colorScheme.error.withAlpha(26),
+                        highlightColor: Colors.transparent,
+                        onTap: () {
+                          HapticUtils.lightTap();
+                          _showSignOutDialog();
+                        },
+                        child: Center(
+                          child: Text(
+                            'auth.sign_out'.tr(),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

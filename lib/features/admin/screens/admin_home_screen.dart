@@ -346,25 +346,25 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> with SingleTi
         'color': Colors.green,
         'onTap': () {
           final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
+          adminDashboardState?.setTabIndex(0);
+        },
+      },
+      {
+        'title': 'Calls'.tr(),
+        'icon': Icons.call_outlined,
+        'color': Colors.orange,
+        'onTap': () {
+          final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
           adminDashboardState?.setTabIndex(1);
         },
       },
       {
         'title': 'Analytics'.tr(),
         'icon': Icons.bar_chart_outlined,
-        'color': Colors.orange,
-        'onTap': () {
-          final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
-          adminDashboardState?.setTabIndex(2);
-        },
-      },
-      {
-        'title': 'Settings'.tr(),
-        'icon': Icons.settings_outlined,
         'color': Colors.purple,
         'onTap': () {
           final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
-          adminDashboardState?.setTabIndex(3);
+          adminDashboardState?.setTabIndex(2);
         },
       },
     ];

@@ -302,6 +302,7 @@
     "call_status_ringing": "Ringing...",
     "call_status_connected": "Connected",
     "call_ended": "Call Ended",
+    "call_rejected": "Call Rejected",
     "call_missed": "Missed Call",
     "call_error_title": "Call Failed",
     "call_error_generic": "Something went wrong with the call connection.",

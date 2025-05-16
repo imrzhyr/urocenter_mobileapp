@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
@@ -8,31 +9,21 @@ import '../../../core/utils/dialog_utils.dart';
 import '../widgets/admin_stat_card.dart';
 import '../widgets/admin_recent_users.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/haptic_utils.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import 'package:easy_localization/easy_localization.dart';
 
-// --- ADD Imports for new screen files ---
-import 'admin_home_screen.dart'; 
-import 'admin_consultations_screen.dart'; // Add later
-import 'admin_data_screen.dart'; // Add later
-import '../../user/screens/settings_screen.dart'; // <<< ADD Import for user settings screen
-import '../../../core/widgets/animated_gradient_top_border.dart'; // <<< ADD Import for gradient border
-// --- END Imports ---
+// --- Imports for screen files ---
+import 'admin_consultations_screen.dart';
+import 'admin_data_screen.dart';
+import 'admin_calls_screen.dart';
+import '../../user/screens/settings_screen.dart';
+import '../../../core/widgets/navigation_bar_style2.dart';
 
-// --- Chat Status Enum ---
-// enum ChatStatus { active, resolved }
-
-// --- Simple Chat Session Model (for simulation) ---
-// class ChatSession { ... }
-
-// --- Models for Data Screen ---
-// class UserInfo { ... }
-// class StatsData { ... }
-
-// --- ADDED Callback Definition ---
+// --- Callback Definition ---
 typedef NavigateToTabCallback = void Function(int index);
-// --- END ADDED Callback Definition ---
 
-/// Admin dashboard screen with bottom navigation
+/// Doctor dashboard screen with bottom navigation
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
@@ -42,26 +33,15 @@ class AdminDashboard extends StatefulWidget {
 }
 
 class AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
+  // Set consultations as default tab (index 0)
   int _selectedIndex = 0;
-  final List<String> _tabTitles = ['Dashboard', 'Consultations', 'Data'];
   late AnimationController _animationController;
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
-  
-  // Add keys for each tab to preserve their state
-  final List<GlobalKey<NavigatorState>> _navigatorKeys = [
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-    GlobalKey<NavigatorState>(),
-  ];
-  
-  // Create PageStorageBucket to maintain scroll positions
-  final PageStorageBucket _bucket = PageStorageBucket();
   
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     _animationController.forward();
@@ -73,89 +53,64 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
     super.dispose();
   }
   
-  // --- ADDED Method to handle tab change ---
   void _onTabSelected(int index) {
     setState(() {
       _selectedIndex = index;
     });
+    // Add a small haptic feedback for better interaction
+    HapticUtils.lightTap();
   }
-  // --- END Method ---
 
-  // --- ADDED: Public method to update index --- 
   void setTabIndex(int index) {
-    if (index >= 0 && index < _tabTitles.length) {
+    if (index >= 0 && index < 3) {
       setState(() {
         _selectedIndex = index;
       });
     }
   }
-  // --- END Added Method ---
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-          index: _selectedIndex,
-        children: const [
-          AdminHomeScreen(),
-          AdminConsultationsScreen(),
-          AdminDataScreen(),
-        ],
+    final theme = Theme.of(context);
+    
+    // Define navigation items
+    final List<NavigationItem> navigationItems = [
+      NavigationItem(
+        icon: Icons.chat_outlined,
+        activeIcon: Icons.chat,
+        label: 'Consultations'.tr(),
       ),
-      bottomNavigationBar: Stack(
-        alignment: Alignment.topCenter,
-        children: [
-          NavigationBar(
-            elevation: 0,
-            backgroundColor: Theme.of(context).colorScheme.surface, // Use theme color
-            onDestinationSelected: _onTabSelected, // Use correct callback
-            selectedIndex: _selectedIndex,
-            indicatorColor: Theme.of(context).colorScheme.primaryContainer, // Use theme indicator
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: 'Dashboard',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.healing_outlined),
-                selectedIcon: Icon(Icons.healing_rounded),
-                label: 'Consults',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.bar_chart_outlined),
-                selectedIcon: Icon(Icons.bar_chart),
-                label: 'Data',
-              ),
-            ],
-          ),
-          const Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: AnimatedGradientTopBorder(), // Add gradient border
-          ),
-        ],
+      NavigationItem(
+        icon: Icons.call_outlined,
+        activeIcon: Icons.call,
+        label: 'Calls'.tr(),
+      ),
+      NavigationItem(
+        icon: Icons.analytics_outlined,
+        activeIcon: Icons.analytics,
+        label: 'Analytics'.tr(),
+      ),
+    ];
+    
+    return Scaffold(
+      body: SafeArea(
+        bottom: false, // Don't add bottom safe area as we have bottom navigation
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: const [
+            AdminConsultationsScreen(),
+            AdminCallsScreen(),
+            AdminDataScreen(),
+          ],
+        ),
+      ),
+      bottomNavigationBar: NavigationBarStyle2(
+        selectedIndex: _selectedIndex,
+        items: navigationItems,
+        onItemSelected: _onTabSelected,
       ),
     );
   }
-
-  // --- MODIFIED: Accept and pass callback ---
-  Widget _buildBody(int index, NavigateToTabCallback onNavigate) {
-    switch (index) {
-      case 0:
-        // Pass the callback down
-        return const AdminHomeScreen();
-      case 1:
-        return const AdminConsultationsScreen(); 
-      case 2:
-        return const AdminDataScreen(); 
-      default:
-        // Pass the callback down to default case too
-        return const AdminHomeScreen();
-    }
-  }
-  // --- END MODIFICATION ---
 }
 
 /// Users tab of the admin dashboard
@@ -164,7 +119,7 @@ class AdminUsersScreen extends StatefulWidget {
 
   @override
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
-  }
+}
   
 class _AdminUsersScreenState extends State<AdminUsersScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
