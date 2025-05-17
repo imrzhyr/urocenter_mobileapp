@@ -404,14 +404,45 @@ class ChatService {
   }) async {
     final callId = const Uuid().v4(); // Generate unique ID
     AppLogger.d("[ChatService startAudioCall] Generated Call ID: $callId");
+    
+    // Ensure we have a proper caller name for admin users
+    String finalCallerName = callerName;
+    if (finalCallerName.isEmpty || finalCallerName == "UroCenter User" || finalCallerName == "Unknown Caller") {
+      // Try to get caller name from user profile
+      try {
+        final currentAuth = FirebaseAuth.instance;
+        final userProfilePath = 'users/$callerId';
+        final userDoc = await _firestore.doc(userProfilePath).get();
+        
+        if (userDoc.exists && userDoc.data() != null) {
+          final userData = userDoc.data()!;
+          // Check for fullName or name fields
+          final name = userData['fullName'] ?? userData['name'];
+          if (name is String && name.isNotEmpty) {
+            finalCallerName = name;
+            AppLogger.d("[ChatService startAudioCall] Found proper name for caller: $finalCallerName");
+          }
+          
+          // Special handling for admin users - ensure "Dr." prefix for known doctors
+          if (userData['isAdmin'] == true && !finalCallerName.startsWith('Dr.')) {
+            // Always use Dr. Ali Kamal for admin users (only doctor in the app)
+            finalCallerName = "Dr. Ali Kamal";
+            AppLogger.d("[ChatService startAudioCall] Using fixed admin name: Dr. Ali Kamal");
+          }
+        }
+      } catch (e) {
+        AppLogger.e("[ChatService startAudioCall] Error getting caller profile: $e");
+        // Continue with original name if error
+      }
+    }
 
     final callData = {
       'callId': callId,
       'callerId': callerId,
-      'callerName': callerName, // Use provided name
+      'callerName': finalCallerName, // Use enhanced name
       'calleeId': calleeId,
       'calleeName': calleeName,
-      'status': 'pending', // Initial status
+      'status': 'ringing', // Change to 'ringing' to be detected by call listeners
       'type': 'audio', // Add type field to fix call event message error
       // 'offer': null, // Explicitly null or absent is fine
       // 'answer': null,
@@ -421,7 +452,7 @@ class ChatService {
     try {
       AppLogger.d("[ChatService startAudioCall] Writing call initiation data to Firestore for call ID: $callId");
       await _firestore.collection('calls').doc(callId).set(callData);
-      AppLogger.d("[ChatService startAudioCall] Call document created successfully.");
+      AppLogger.d("[ChatService startAudioCall] Call document created successfully with caller name: $finalCallerName");
       return callId; // Return the ID on success
     } catch (e) {
       AppLogger.e("[ChatService startAudioCall] Error writing call initiation data to Firestore: $e");

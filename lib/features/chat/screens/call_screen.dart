@@ -24,6 +24,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   Timer? _callDurationTimer;
   Duration _callDuration = Duration.zero;
   String _partnerName = 'Contact';
+  bool _hasSetupListeners = false; // Track if listeners are set up
 
   @override
   void initState() {
@@ -40,6 +41,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     // Get partner name from params if available
     if (params.partnerName.isNotEmpty) {
       _partnerName = params.partnerName;
+      AppLogger.d("CallScreen: Using provided partner name: ${params.partnerName}");
+    } else {
+      // Use a fallback if partner name is empty
+      _partnerName = 'Call Participant';
+      AppLogger.w("CallScreen: Empty partner name received, using fallback name");
     }
 
     AppLogger.d("CallScreen: Valid parameters received for call ID: ${params.callId}");
@@ -49,40 +55,70 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       if (!mounted) return;
       
       // Access provider after UI is ready
-      ref.read(callControllerProvider(params.toRecord()));
+      final controller = ref.read(callControllerProvider(params.toRecord()).notifier);
       AppLogger.d("CallScreen: Call controller initialized for call ID: ${params.callId}");
       
-      // Check if we should start timer
-      _maybeStartTimer();
+      // If we're the callee (the one receiving the call), automatically answer
+      if (!params.isCaller && params.callId.isNotEmpty) {
+        AppLogger.d("CallScreen: Auto-answering incoming call as callee");
+        // Short delay to ensure controller is fully initialized
+        Future.delayed(const Duration(milliseconds: 500), () {
+          controller.answerCall();
+        });
+      }
+      
+      // Set up timer and state listeners only once
+      if (!_hasSetupListeners) {
+        _setupCallStateListeners(params);
+        _hasSetupListeners = true;
+      }
     });
   }
 
-  void _maybeStartTimer() {
-    final params = CallParams.fromMap(widget.extraData);
-    if (params == null) return;
-    
+  // Combined method to set up all state listeners in one place
+  void _setupCallStateListeners(CallParams params) {
     final callState = ref.read(callControllerProvider(params.toRecord()));
     
-    // Start timer if connected
+    // Start timer immediately if already connected
     if (callState.connectionState == CallConnectionState.connected) {
       _startTimer();
+    }
+    
+    // Listen for state changes that affect timer and call status
+    ref.listenManual(callControllerProvider(params.toRecord()), (previous, next) {
+      // First check if widget is still mounted before taking any action
+      if (!mounted) {
+        AppLogger.d("CallScreen: Ignoring state change as widget is no longer mounted");
+        return;
       }
       
-    // Set up listener to start/stop timer based on state changes
-    ref.listenManual(callControllerProvider(params.toRecord()), (previous, next) {
+      // Handle timer start - when call becomes connected
       if (previous?.connectionState != CallConnectionState.connected && 
           next.connectionState == CallConnectionState.connected) {
         _startTimer();
-      } else if (previous?.connectionState == CallConnectionState.connected &&
-                next.connectionState != CallConnectionState.connected) {
-        _stopTimer();
+      } 
+      // Handle timer stop - when call disconnects after being connected
+      else if (previous?.connectionState == CallConnectionState.connected &&
+               next.connectionState != CallConnectionState.connected) {
+        // Handle stop timer safely
+        if (_callDurationTimer != null) {
+          _callDurationTimer!.cancel();
+          _callDurationTimer = null;
+          AppLogger.d("CallScreen: Timer stopped due to call state change");
+        }
+      }
+      
+      // Special handling for call end - preserve the final duration
+      if (previous?.connectionState == CallConnectionState.connected && 
+          next.connectionState == CallConnectionState.ended) {
+        AppLogger.d("CallScreen: Call ended with final duration: ${_formatDuration(_callDuration)}");
       }
     });
   }
 
   void _startTimer() {
     _callDurationTimer?.cancel();
-        setState(() {
+    setState(() {
       _callDuration = Duration.zero;
     });
     
@@ -91,16 +127,32 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         setState(() {
           _callDuration = Duration(seconds: timer.tick);
         });
-          }
-        });
+      }
+    });
     
     AppLogger.d("CallScreen: Call duration timer started");
   }
 
-  void _stopTimer() {
+  void _stopTimer({bool resetDuration = true}) {
     _callDurationTimer?.cancel();
     _callDurationTimer = null;
-    AppLogger.d("CallScreen: Call duration timer stopped");
+    
+    // Only reset duration if specified AND widget is still mounted
+    // This prevents setState being called during disposal
+    if (resetDuration && mounted) {
+      // Using try-catch to prevent errors if widget is in an invalid state
+      try {
+        setState(() {
+          _callDuration = Duration.zero;
+        });
+      } catch (e) {
+        AppLogger.e("CallScreen: Error in _stopTimer: $e");
+        // Just set the value directly without setState if there's an error
+        _callDuration = Duration.zero;
+      }
+    }
+    
+    AppLogger.d("CallScreen: Call duration timer stopped, duration preserved: $_callDuration");
   }
 
   String _formatDuration(Duration duration) {
@@ -388,6 +440,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       case CallConnectionState.connected:
         return 'chat.call_status_connected'.tr();
       case CallConnectionState.ended:
+        // Additional check for ended calls with duration
+        if (callState.callStatus == 'completed' || 
+            (callState.callStatus == 'ended' && _callDuration.inSeconds > 0)) {
+          // Return a status that shows it was a successful call
+          return 'chat.call_completed'.tr();
+        }
+        // Otherwise handle as before
         return callState.callStatus == 'rejected' ? 'chat.call_rejected'.tr() : 'chat.call_ended'.tr();
       case CallConnectionState.failed:
         return callState.errorMessage ?? 'chat.call_error_generic'.tr();
@@ -404,13 +463,23 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       case CallConnectionState.ended:
       case CallConnectionState.failed:
         return Colors.red;
+    }
+    
+    // Default fallback color if none matched (shouldn't happen with enum)
+    return Colors.grey;
   }
-}
 
   @override
   void dispose() {
     AppLogger.d("CallScreen: Disposing screen");
-    _stopTimer();
+    
+    // Cancel timer directly instead of using _stopTimer to avoid setState calls
+    if (_callDurationTimer != null) {
+      _callDurationTimer!.cancel();
+      _callDurationTimer = null;
+      AppLogger.d("CallScreen: Timer cancelled during dispose");
+    }
+    
     super.dispose();
   }
 }

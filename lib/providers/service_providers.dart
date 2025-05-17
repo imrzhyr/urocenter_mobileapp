@@ -12,6 +12,10 @@ import '../core/services/notification_service.dart';
 import '../core/services/call_service.dart';
 import '../core/models/notification_model.dart';
 import 'package:urocenter/providers/in_app_notification_provider.dart';
+import '../app/routes.dart'; // Import routes.dart for the routerProvider
+
+// Re-export routerProvider from routes.dart
+export '../app/routes.dart' show routerProvider;
 
 // TODO: If services require other dependencies (like an ApiClient), 
 // those dependencies should also be provided via Riverpod and passed here.

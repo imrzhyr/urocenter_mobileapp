@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/utils/haptic_utils.dart';
 import '../../../core/utils/date_utils.dart' as app_date_utils;
 import '../../../core/widgets/app_bar_style2.dart' show AppBarStyle2, FilterOption;
@@ -56,11 +57,11 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     
     // Define filter options
     final List<FilterOption> filterOptions = [
-      const FilterOption(value: 'all', label: 'All'),
-      const FilterOption(value: 'completed', label: 'Completed'),
-      const FilterOption(value: 'missed', label: 'Missed'),
-      const FilterOption(value: 'rejected', label: 'Rejected'),
-      const FilterOption(value: 'today', label: 'Today'),
+      FilterOption(value: 'all', label: 'chat.all_calls'.tr()),
+      FilterOption(value: 'completed', label: 'chat.completed_calls'.tr()),
+      FilterOption(value: 'missed', label: 'chat.missed_calls'.tr()),
+      FilterOption(value: 'rejected', label: 'chat.rejected_calls'.tr()),
+      FilterOption(value: 'today', label: 'chat.today_calls'.tr()),
     ];
     
     return Scaffold(
@@ -68,7 +69,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight + 70), // Increase height to accommodate search and filters
         child: AppBarStyle2(
-          title: "Call History",
+          title: 'chat.call_history'.tr(),
           showSearch: true,
           showFilters: true,
           filtersExpanded: _showFilters,
@@ -78,7 +79,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
           filterOptions: filterOptions,
           selectedFilter: _selectedFilter,
           onFilterSelected: _applyFilter,
-          searchHint: "Search calls",
+          searchHint: 'chat.search_calls'.tr(),
         ),
       ),
       body: Column(
@@ -96,7 +97,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
                 icon: Icons.error_outline,
                 message: 'Error loading calls',
                 suggestion: error.toString(),
-                buttonText: 'Try Again',
+                buttonText: 'common.try_again'.tr(),
                 buttonIcon: Icons.refresh,
                 onButtonPressed: () {
                   // Use refresh result to clear unused_result warning
@@ -147,11 +148,11 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     if (filteredCalls.isEmpty) {
       return EmptyStateStyle2(
         icon: Icons.call_end_rounded,
-        message: 'No calls found',
+        message: 'chat.no_calls_found'.tr(),
         suggestion: _searchQuery.isNotEmpty || _selectedFilter != 'all'
-            ? 'Try changing your search or filter'
-            : 'New calls will appear here',
-        buttonText: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? 'Clear Filters' : null,
+            ? 'common.try_again'.tr()
+            : 'chat.new_calls_will_appear'.tr(),
+        buttonText: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? 'common.clear'.tr() : null,
         buttonIcon: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? Icons.clear : null,
         onButtonPressed: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? () {
           _searchController.clear();
@@ -180,42 +181,54 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     final formattedTime = app_date_utils.AppDateUtils.formatDateWithTime(callTime);
     final callType = call['type'] as String? ?? 'audio';
     
-    // Additional info for completed calls with duration
+    // Additional info for calls with duration
     Widget? additionalWidget;
-    if (callStatus == 'completed' && call['duration'] != null) {
-      final callDuration = _formatDuration(call['duration'] as int);
-      additionalWidget = Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.timelapse,
-              size: 14,
-              color: Colors.blue,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Duration: $callDuration',
-            style: TextStyle(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      );
+    
+    // Always include call duration, even if zero
+    final int durationValue = call['duration'] as int? ?? 0;
+    final callDuration = _formatDuration(durationValue);
+    
+    // Create widget for call duration
+    Color durationColor = Colors.blue;
+    if (callStatus == 'completed') {
+      durationColor = Colors.green;
+    } else if (callStatus == 'missed' || callStatus == 'rejected') {
+      durationColor = Colors.red;
+    } else if (callStatus == 'ended') {
+      durationColor = durationValue > 0 ? Colors.green : Colors.grey;
     }
+    
+    additionalWidget = Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: durationColor.withAlpha(25),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.timelapse,
+            size: 14,
+            color: durationColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Duration: $callDuration',
+          style: TextStyle(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
     
     final nameParts = '${call['callerName']} → ${call['calleeName']}';
     
     return ChatListItemStyle2(
       name: nameParts,
       lastMessage: formattedTime,
-      timeString: callType == 'video' ? 'Video Call' : 'Audio Call',
+      timeString: callType == 'video' ? 'chat.video_call'.tr() : 'chat.audio_call'.tr(),
       status: callStatus,
       additionalInfo: additionalWidget,
       onTap: () {
@@ -229,11 +242,9 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     final Duration duration = Duration(seconds: seconds);
     
     if (duration.inHours > 0) {
-      return '${duration.inHours}h ${duration.inMinutes.remainder(60)}m ${duration.inSeconds.remainder(60)}s';
-    } else if (duration.inMinutes > 0) {
-      return '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
+      return '${duration.inHours}:${(duration.inMinutes % 60).toString().padLeft(2, '0')}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
     } else {
-      return '${duration.inSeconds}s';
+      return '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
     }
   }
 } 

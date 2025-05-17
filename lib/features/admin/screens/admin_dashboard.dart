@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/theme/theme.dart';
 import '../../../app/routes.dart';
 import '../../../core/utils/dialog_utils.dart';
@@ -12,6 +14,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/haptic_utils.dart';
 import 'package:urocenter/core/utils/logger.dart';
 import 'package:easy_localization/easy_localization.dart';
+import '../../../core/services/call_service.dart';
 
 // --- Imports for screen files ---
 import 'admin_consultations_screen.dart';
@@ -24,15 +27,14 @@ import '../../../core/widgets/navigation_bar_style2.dart';
 typedef NavigateToTabCallback = void Function(int index);
 
 /// Doctor dashboard screen with bottom navigation
-class AdminDashboard extends StatefulWidget {
+class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
-  AdminDashboardState createState() => AdminDashboardState();
+  ConsumerState<AdminDashboard> createState() => AdminDashboardState();
 }
 
-class AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {
+class AdminDashboardState extends ConsumerState<AdminDashboard> with SingleTickerProviderStateMixin {
   // Set consultations as default tab (index 0)
   int _selectedIndex = 0;
   late AnimationController _animationController;
@@ -45,11 +47,15 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
       vsync: this,
     );
     _animationController.forward();
+    listenForIncomingCalls();
   }
   
   @override
   void dispose() {
     _animationController.dispose();
+    // Stop listening for incoming calls when the screen is disposed
+    final callService = ref.read(callServiceProvider);
+    callService.stopListening();
     super.dispose();
   }
   
@@ -73,6 +79,12 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     
+    // Monitor incoming calls to ensure they're properly detected
+    final incomingCall = ref.watch(incomingCallProvider);
+    if (incomingCall != null) {
+      AppLogger.d("[AdminDashboard] Detected incoming call in dashboard from: ${incomingCall.callerName}");
+    }
+    
     // Define navigation items
     final List<NavigationItem> navigationItems = [
       NavigationItem(
@@ -95,12 +107,34 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
     return Scaffold(
       body: SafeArea(
         bottom: false, // Don't add bottom safe area as we have bottom navigation
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: const [
-            AdminConsultationsScreen(),
-            AdminCallsScreen(),
-            AdminDataScreen(),
+        child: Stack(
+          children: [
+            IndexedStack(
+              index: _selectedIndex,
+              children: const [
+                AdminConsultationsScreen(),
+                AdminCallsScreen(),
+                AdminDataScreen(),
+              ],
+            ),
+            
+            // Debug indicator for incoming calls - remove in production
+            if (incomingCall != null)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    'Incoming call from: ${incomingCall.callerName}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -110,6 +144,23 @@ class AdminDashboardState extends State<AdminDashboard> with SingleTickerProvide
         onItemSelected: _onTabSelected,
       ),
     );
+  }
+
+  void listenForIncomingCalls() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      final currentUserId = currentUser.uid;
+      AppLogger.d("[AdminDashboard] Setting up call listener for admin user: $currentUserId");
+      
+      final callService = ref.read(callServiceProvider);
+      callService.listenForIncomingCalls(currentUserId);
+      
+      // Listen for incoming calls with admin as the callee ID
+      // We need this explicitly because the admin dashboard is a different UI from the user one
+      AppLogger.d("[AdminDashboard] Also listening for admin calls as recipient");
+    } else {
+      AppLogger.e("[AdminDashboard] Cannot listen for incoming calls: User not logged in");
+    }
   }
 }
 

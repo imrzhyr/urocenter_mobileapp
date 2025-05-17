@@ -120,6 +120,14 @@ service cloud.firestore {
       }
     }
 
+    // --- Agora Tokens ---
+    match /agora_tokens/{channelName} {
+      // Allow reading tokens for authenticated users
+      allow read: if isSignedIn();
+      // Only admins can create/update/delete tokens
+      allow write: if isAdmin();
+    }
+
     // --- Call History ---
     match /call_history/{historyId} {
       allow read, write: if isSignedIn();

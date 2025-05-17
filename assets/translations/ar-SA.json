@@ -43,7 +43,8 @@
     "no_results": "لم يتم العثور على نتائج",
     "and": "و",
     "send": "إرسال",
-    "retry": "إعادة المحاولة"
+    "retry": "إعادة المحاولة",
+    "clear": "حذف التصفية"
   },
   "help_support": {
     "title": "المساعدة والدعم",
@@ -331,7 +332,8 @@
     "no_messages": "لا توجد رسائل حتى الآن",
     "recording": "جاري التسجيل... {}",
     "stop_recording": "إيقاف وإرسال التسجيل",
-    "send": "إرسال"
+    "send": "إرسال",
+    "call_completed": "اكتملت المكالمة"
   },
   "settings": {
     "title": "الإعدادات",
@@ -472,6 +474,18 @@
     "no_consultations_match": "لا توجد استشارات تطابق \"{query}\".",
     "no_users_match": "لا يوجد مستخدمون يطابقون \"{query}\".",
     "paid": "مدفوع",
-    "new": "جديد"
+    "new": "جديد",
+    "call_history": "سجل المكالمات",
+    "all_calls": "الكل",
+    "completed_calls": "مكتملة",
+    "missed_calls": "فائتة",
+    "rejected_calls": "مرفوضة",
+    "today_calls": "اليوم",
+    "search_calls": "بحث المكالمات",
+    "no_calls_found": "لم يتم العثور على مكالمات",
+    "new_calls_will_appear": "ستظهر المكالمات الجديدة هنا",
+    "home": "الرئيسية",
+    "video_call": "مكالمة فيديو",
+    "audio_call": "مكالمة صوتية"
   }
 } 

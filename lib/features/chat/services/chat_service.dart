@@ -199,13 +199,43 @@ class ChatService {
         return existingCallQuery.docs.first.id;
       }
       
+      // Ensure we have a proper caller name for admin users
+      String finalCallerName = callerName;
+      if (finalCallerName.isEmpty || finalCallerName == "UroCenter User" || finalCallerName == "Unknown Caller") {
+        // Try to get caller name from user profile
+        try {
+          final userProfilePath = 'users/$callerId';
+          final userDoc = await _firestore.doc(userProfilePath).get();
+          
+          if (userDoc.exists && userDoc.data() != null) {
+            final userData = userDoc.data()!;
+            // Check for fullName or name fields
+            final name = userData['fullName'] ?? userData['name'];
+            if (name is String && name.isNotEmpty) {
+              finalCallerName = name;
+              _logger.d("Found proper name for caller: $finalCallerName");
+            }
+            
+            // Special handling for admin users - ensure "Dr." prefix for known doctors
+            if (userData['isAdmin'] == true && !finalCallerName.startsWith('Dr.')) {
+              // Always use Dr. Ali Kamal for admin users (only doctor in the app)
+              finalCallerName = "Dr. Ali Kamal";
+              _logger.d("Using fixed admin name: Dr. Ali Kamal");
+            }
+          }
+        } catch (e) {
+          _logger.d('Error getting caller profile: $e');
+          // Continue with original name if error
+        }
+      }
+      
       // Create a new call document with initial data
       final callDoc = await _firestore.collection('calls').add({
         'callerId': callerId,
-        'callerName': callerName,
+        'callerName': finalCallerName,
         'calleeId': calleeId,
         'calleeName': calleeName,
-        'status': 'pending',
+        'status': 'ringing',
         'startTime': FieldValue.serverTimestamp(),
         'endTime': null,
         'type': 'audio',
@@ -214,6 +244,7 @@ class ChatService {
         'answer': null,
       });
       
+      _logger.d('Call document created successfully with caller name: $finalCallerName');
       return callDoc.id;
     } catch (e) {
       _logger.d('Error starting audio call: $e');

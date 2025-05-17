@@ -9,6 +9,7 @@ import '../theme/app_colors.dart';
 import '../services/call_service.dart'; // Import CallService and IncomingCall
 import '../utils/haptic_utils.dart';
 import '../../app/routes.dart'; // Import RouteNames
+import '../../providers/service_providers.dart'; // Add this import for routerProvider
 
 /// Widget to display incoming call UI overlay
 class IncomingCallWidget extends ConsumerWidget {
@@ -23,10 +24,13 @@ class IncomingCallWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use Riverpod to access the call service
+    // Get the router instance from the provider
+    final router = ref.read(routerProvider);
+    final theme = Theme.of(context);
     
     return Container(
-      color: Colors.black.withValues(alpha: 217.0),
+      // Use a completely opaque background to prevent any UI from showing through
+      color: AppColors.primary,
       child: SafeArea(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -36,9 +40,9 @@ class IncomingCallWidget extends ConsumerWidget {
             Container(
               width: 100,
               height: 100,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.blue,
+                color: Colors.white.withOpacity(0.2),
               ),
               child: const Icon(
                 Icons.person,
@@ -48,21 +52,23 @@ class IncomingCallWidget extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
             // Incoming call text
-            Text(
-              'chat.incoming_call'.tr(),
-              style: const TextStyle(
+            const Text(
+              'Incoming Call',
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
               ),
             ),
             const SizedBox(height: 10),
             // Caller name
             Text(
-              incomingCall.callerName, // Display caller's name
+              incomingCall.callerName.isNotEmpty ? incomingCall.callerName : 'Unknown Caller',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
+                decoration: TextDecoration.none,
               ),
             ),
             const SizedBox(height: 40),
@@ -73,11 +79,11 @@ class IncomingCallWidget extends ConsumerWidget {
                 // Reject button
                 CircleAvatar(
                   radius: 35,
-                  backgroundColor: Colors.red,
+                  backgroundColor: AppColors.error,
                   child: IconButton(
                     icon: const Icon(Icons.call_end, color: Colors.white, size: 30),
                     onPressed: () {
-                      HapticFeedback.mediumImpact();
+                      HapticUtils.mediumTap();
                       AppLogger.d("[IncomingCallWidget] Rejecting call: ${incomingCall.callId}");
                       ref.read(callServiceProvider).rejectCall(incomingCall.callId);
                       // The notification will be dismissed automatically when state updates
@@ -87,23 +93,35 @@ class IncomingCallWidget extends ConsumerWidget {
                 // Accept button
                 CircleAvatar(
                   radius: 35,
-                  backgroundColor: Colors.green,
+                  backgroundColor: AppColors.success,
                   child: IconButton(
                     icon: const Icon(Icons.call, color: Colors.white, size: 30),
                     onPressed: () async {
-                      HapticFeedback.mediumImpact();
+                      HapticUtils.mediumTap();
                       AppLogger.d("[IncomingCallWidget] Accepting call: ${incomingCall.callId}");
+                      
+                      // Ensure we have a valid caller name
+                      String partnerName = incomingCall.callerName;
+                      if (partnerName.isEmpty) {
+                        partnerName = "Unknown Caller";
+                        AppLogger.w("[IncomingCallWidget] Empty caller name for call ${incomingCall.callId}, using fallback");
+                      }
+                      
+                      // Explicitly clear the incoming call notification
+                      ref.read(incomingCallProvider.notifier).clearIncomingCall();
                       
                       // Navigate to call screen first, so the CallController 
                       // can handle the SDP answer creation
                       final Map<String, dynamic> extraData = {
                         'callId': incomingCall.callId,
-                        'partnerName': incomingCall.callerName,
+                        'partnerName': partnerName,
                         'isCaller': false,
                       };
                       
                       AppLogger.d("[IncomingCallWidget] Navigating to CallScreen with data: $extraData");
-                      context.pushNamed(
+                      
+                      // Use the router directly instead of context.pushNamed
+                      router.pushNamed(
                         RouteNames.callScreen,
                         extra: extraData,
                       );

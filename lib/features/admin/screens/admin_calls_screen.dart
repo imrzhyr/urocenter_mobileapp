@@ -181,34 +181,38 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
     final formattedTime = app_date_utils.AppDateUtils.formatDateWithTime(callTime);
     final callType = call['type'] as String? ?? 'audio';
     
-    // Additional info for completed calls with duration
+    // Additional info for calls with duration
     Widget? additionalWidget;
-    if (callStatus == 'completed' && call['duration'] != null) {
+    if (call['duration'] != null) {
       final callDuration = _formatDuration(call['duration'] as int);
-      additionalWidget = Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
-              shape: BoxShape.circle,
+      
+      // Only show durations > 0
+      if (callDuration != '0:00') {
+        additionalWidget = Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.blue.withAlpha(25),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.timelapse,
+                size: 14,
+                color: Colors.blue,
+              ),
             ),
-            child: const Icon(
-              Icons.timelapse,
-              size: 14,
-              color: Colors.blue,
+            const SizedBox(width: 8),
+            Text(
+              'Duration: $callDuration',
+              style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Duration: $callDuration',
-            style: TextStyle(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      );
+          ],
+        );
+      }
     }
     
     final nameParts = '${call['callerName']} → ${call['calleeName']}';

@@ -59,7 +59,14 @@ class UserProfileService {
       AppLogger.e('Error: No user is currently logged in.');
       return null; // Or throw an exception if this case should be handled differently
     }
-    return await getUserProfile(currentUser.uid);
+    AppLogger.d('Fetching current user profile for user ID: ${currentUser.uid}');
+    final profile = await getUserProfile(currentUser.uid);
+    if (profile != null) {
+      AppLogger.d('User profile fetched successfully. Name: ${profile['fullName'] ?? 'Unknown'}, Role: ${profile['role'] ?? 'Unknown'}');
+    } else {
+      AppLogger.w('User profile not found for current user (${currentUser.uid})');
+    }
+    return profile;
   }
 
   // TODO: Add other methods as needed (e.g., updateUserField, deleteUserProfile)

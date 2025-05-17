@@ -42,7 +42,8 @@
     "search": "Search",
     "no_results": "No results found",
     "and": "and",
-    "retry": "Retry"
+    "retry": "Retry",
+    "clear": "Clear Filters"
   },
   "help_support": {
     "title": "Help & Support",
@@ -311,7 +312,8 @@
     "no_messages": "No messages yet",
     "recording": "Recording... {}",
     "stop_recording": "Stop and Send Recording",
-    "send": "Send"
+    "send": "Send",
+    "call_completed": "Call Completed"
   },
   "settings": {
     "title": "Settings",
@@ -452,6 +454,18 @@
     "no_consultations_match": "No consultations match \"{query}\".",
     "no_users_match": "No users match \"{query}\".",
     "paid": "Paid",
-    "new": "New"
+    "new": "New",
+    "call_history": "Call History",
+    "all_calls": "All",
+    "completed_calls": "Completed",
+    "missed_calls": "Missed",
+    "rejected_calls": "Rejected",
+    "today_calls": "Today",
+    "search_calls": "Search calls",
+    "no_calls_found": "No calls found",
+    "new_calls_will_appear": "New calls will appear here",
+    "home": "Home",
+    "video_call": "Video Call",
+    "audio_call": "Audio Call"
   }
 } 
