@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/utils/haptic_utils.dart';
 import '../../../core/utils/date_utils.dart' as app_date_utils;
 import '../../../core/widgets/app_bar_style2.dart' show AppBarStyle2, FilterOption;
@@ -56,11 +57,11 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
     
     // Define filter options
     final List<FilterOption> filterOptions = [
-      const FilterOption(value: 'all', label: 'All'),
-      const FilterOption(value: 'completed', label: 'Completed'),
-      const FilterOption(value: 'missed', label: 'Missed'),
-      const FilterOption(value: 'rejected', label: 'Rejected'),
-      const FilterOption(value: 'today', label: 'Today'),
+      FilterOption(value: 'all', label: 'All'.tr()),
+      FilterOption(value: 'completed', label: 'Completed'.tr()),
+      FilterOption(value: 'missed', label: 'Missed'.tr()),
+      FilterOption(value: 'rejected', label: 'Rejected'.tr()),
+      FilterOption(value: 'today', label: 'Today'.tr()),
     ];
     
     return Scaffold(
@@ -69,7 +70,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
         children: [
           // Use the AppBarStyle2 component
           AppBarStyle2(
-            title: "Call History",
+            title: "Call History".tr(),
             showSearch: true,
             showFilters: true,
             filtersExpanded: _showFilters,
@@ -79,7 +80,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
             filterOptions: filterOptions,
             selectedFilter: _selectedFilter,
             onFilterSelected: _applyFilter,
-            searchHint: "Search calls",
+            searchHint: "Search calls".tr(),
           ),
           
           const SizedBox(height: 16),
@@ -87,7 +88,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
           // Call history list
           Expanded(
             child: callHistoryAsync.when(
-              data: (calls) => _buildCallsList(calls),
+              data: (calls) => _buildCallsList(calls.map((call) => call.toMap()).toList()),
               loading: () => const ShimmerLoadingListStyle2(
                 itemCount: 10,
                 itemHeight: 90,
@@ -95,9 +96,9 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
               ),
               error: (error, stack) => EmptyStateStyle2(
                 icon: Icons.error_outline,
-                message: 'Error loading calls',
+                message: 'Error loading calls'.tr(),
                 suggestion: error.toString(),
-                buttonText: 'Try Again',
+                buttonText: 'Try Again'.tr(),
                 buttonIcon: Icons.refresh,
                 onButtonPressed: () {
                   // Use refresh result to clear unused_result warning
@@ -121,7 +122,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
         final calleeName = call['calleeName'] as String;
         final searchLower = _searchQuery.toLowerCase();
         return callerName.toLowerCase().contains(searchLower) || 
-               calleeName.toLowerCase().contains(searchLower);
+              calleeName.toLowerCase().contains(searchLower);
       }).toList();
     }
     
@@ -147,19 +148,18 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
     
     if (filteredCalls.isEmpty) {
       return EmptyStateStyle2(
-        icon: Icons.call_end_rounded,
-        message: 'No calls found',
+        icon: Icons.phone_missed,
+        message: 'No calls found'.tr(),
         suggestion: _searchQuery.isNotEmpty || _selectedFilter != 'all'
-            ? 'Try changing your search or filter'
-            : 'New calls will appear here',
-        buttonText: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? 'Clear Filters' : null,
-        buttonIcon: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? Icons.clear : null,
+            ? 'Try Again'.tr()
+            : 'New calls will appear here'.tr(),
+        buttonText: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? 'common.clear'.tr() : null,
+        buttonIcon: Icons.filter_alt_off,
         onButtonPressed: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? () {
-          _searchController.clear();
           setState(() {
             _searchQuery = '';
             _selectedFilter = 'all';
-            _showFilters = false;
+            _searchController.clear();
           });
         } : null,
       );
@@ -204,7 +204,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Duration: $callDuration',
+              'Duration: $callDuration'.tr(),
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: 13,
@@ -220,7 +220,7 @@ class _AdminCallsScreenState extends ConsumerState<AdminCallsScreen> {
     return ChatListItemStyle2(
       name: nameParts,
       lastMessage: formattedTime,
-      timeString: callType == 'video' ? 'Video Call' : 'Audio Call',
+      timeString: callType == 'video' ? 'Video Call'.tr() : 'Audio Call'.tr(),
       status: callStatus,
       additionalInfo: additionalWidget,
       onTap: () {

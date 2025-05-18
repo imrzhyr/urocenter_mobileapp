@@ -5,6 +5,20 @@
     "tagline": "Your Medical Solutions Partner",
     "get_started": "Get Started"
   },
+  "Call History": "Call History",
+  "All": "All",
+  "Completed": "Completed",
+  "Missed": "Missed",
+  "Rejected": "Rejected",
+  "Today": "Today",
+  "Search calls": "Search calls",
+  "No calls found": "No calls found",
+  "New calls will appear here": "New calls will appear here",
+  "Try Again": "Try Again",
+  "Error loading calls": "Error loading calls",
+  "Duration: {0}": "Duration: {0}",
+  "Video Call": "Video Call",
+  "Audio Call": "Audio Call",
   "language": {
     "english": "English",
     "arabic": "Arabic"
@@ -43,7 +57,14 @@
     "no_results": "No results found",
     "and": "and",
     "retry": "Retry",
-    "clear": "Clear Filters"
+    "clear": "Clear Filters",
+    "all": "All",
+    "active": "Active",
+    "completed": "Completed",
+    "paid": "Paid",
+    "urgent": "Urgent",
+    "unread": "Unread",
+    "this_week": "This Week"
   },
   "help_support": {
     "title": "Help & Support",
@@ -125,6 +146,7 @@
     "send_code": "Send Code",
     "verification_code_explanation": "We'll send a verification code to this number."
   },
+  "Home": "Home", 
   "dashboard": {
     "home": "Home",
     "chats": "Chats",
@@ -313,7 +335,18 @@
     "recording": "Recording... {}",
     "stop_recording": "Stop and Send Recording",
     "send": "Send",
-    "call_completed": "Call Completed"
+    "call_completed": "Call Completed",
+    "call_history": "Call History",
+    "all_calls": "All",
+    "completed_calls": "Completed",
+    "missed_calls": "Missed",
+    "rejected_calls": "Rejected",
+    "today_calls": "Today",
+    "search_calls": "Search calls",
+    "no_calls_found": "No calls found",
+    "new_calls_will_appear": "New calls will appear here",
+    "video_call": "Video Call",
+    "audio_call": "Audio Call"
   },
   "settings": {
     "title": "Settings",
@@ -467,5 +500,21 @@
     "home": "Home",
     "video_call": "Video Call",
     "audio_call": "Audio Call"
+  },
+  "consultations": {
+    "title": "Consultations",
+    "search_consultations": "Search consultations",
+    "no_consultations_found": "No consultations found"
+  },
+  "calls": {
+    "title": "Calls",
+    "call_history": "Call History",
+    "search_calls": "Search calls",
+    "no_calls_found": "No calls found",
+    "new_calls_will_appear_here": "New calls will appear here"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "search_users": "Search users"
   }
 } 

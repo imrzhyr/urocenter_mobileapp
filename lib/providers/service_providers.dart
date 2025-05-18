@@ -10,15 +10,23 @@ import '../services/storage_service.dart';
 import '../features/chat/services/chat_playback_service.dart';
 import '../core/services/notification_service.dart';
 import '../core/services/call_service.dart';
+import '../core/services/sound_service.dart';
 import '../core/models/notification_model.dart';
 import 'package:urocenter/providers/in_app_notification_provider.dart';
 import '../app/routes.dart'; // Import routes.dart for the routerProvider
+import '../core/services/fcm_handler.dart';
 
 // Re-export routerProvider from routes.dart
 export '../app/routes.dart' show routerProvider;
+export '../core/services/sound_service.dart' show soundServiceProvider;
 
 // TODO: If services require other dependencies (like an ApiClient), 
 // those dependencies should also be provided via Riverpod and passed here.
+
+// --- Active Call Provider ---
+
+/// Provider to store and track active call information across the app
+final activeCallProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
 
 // --- Core Firebase Providers ---
 
@@ -96,6 +104,12 @@ final globalIncomingMessagesProvider = StreamProvider<NotificationData?>((ref) {
 /// State provider holding the ID of the chat screen currently being viewed.
 /// Null if no chat screen is currently active.
 final currentlyViewedChatIdProvider = StateProvider<String?>((ref) => null);
+
+// Add this provider for the FCM handler
+final fcmHandlerProvider = Provider<FCMHandler>((ref) {
+  final router = ref.watch(routerProvider);
+  return FCMHandler(router: router);
+});
 
 // --- END: Providers ---
 

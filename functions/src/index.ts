@@ -89,7 +89,17 @@ export const onNewChatMessage = onDocumentCreated(
         .doc(senderId)
         .get();
       if (senderDoc.exists) {
-        senderName = senderDoc.data()?.fullName ?? senderName;
+        // Check if sender is an admin
+        const isAdmin = senderDoc.data()?.isAdmin === true;
+        
+        if (isAdmin) {
+          // Always use Dr. Ali Kamal for admin users
+          senderName = "Dr. Ali Kamal";
+          console.log(`[${chatId}] Sender is admin, using doctor name: ${senderName}`);
+        } else {
+          // For regular users, use their full name
+          senderName = senderDoc.data()?.fullName ?? senderName;
+        }
       }
     } catch (error) {
       console.error(`[${chatId}] Error fetching sender profile (${senderId}):`, error);
@@ -146,6 +156,7 @@ export const onNewChatMessage = onDocumentCreated(
         type: "chat_message",
         chatId: chatId,
         senderId: senderId,
+        senderName: senderName,
       },
     };
 

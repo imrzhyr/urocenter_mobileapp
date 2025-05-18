@@ -47,6 +47,8 @@ import '../../../core/widgets/circular_loading_indicator.dart';
 import 'fullscreen_image_viewer.dart'; // <<< ADD CORRECT IMPORT
 import 'package:url_launcher/url_launcher.dart'; // <<< ADD url_launcher import
 import 'package:intl/intl.dart'; // Import for DateFormat
+// Near the top, add the import for the new CallEventMessage widget
+import 'package:urocenter/features/chat/widgets/call_event_message.dart';
 
 // --- Revised Patient Onboarding Data Model ---
 // Reflects data explicitly gathered in ProfileSetup, MedicalHistory, DocumentUpload screens
@@ -1644,7 +1646,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with SingleTickerProvid
                                       _DateHeader(date: message.createdAt, formatDate: _formatDateHeader),
                                     // Use CallEventMessage for call_event types, otherwise MessageBubble
                                     message.type == MessageType.call_event
-                                        ? _CallEventMessage(message: message)
+                                        ? CallEventMessage(message: message)
                                         : _MessageBubble(
                                             message: message,
                                             isMe: isMe,
@@ -2315,16 +2317,16 @@ class _MessageBubbleState extends ConsumerState<_MessageBubble> with AutomaticKe
       final durationMs = widget.message.metadata?['duration_ms'];
       if (durationMs is int && durationMs > 0) {
           _totalDuration = Duration(milliseconds: durationMs);
-          AppLogger.d("[DEBUG InitState] Set initial duration from metadata: $_totalDuration");
+          // AppLogger.d("[DEBUG InitState] Set initial duration from metadata: $_totalDuration");
       } else {
-           AppLogger.d("[DEBUG InitState] No valid duration in metadata.");
+           // AppLogger.d("[DEBUG InitState] No valid duration in metadata.");
       }
 
       // Then, initialize player if a source exists locally (it might update duration again)
       if (_isDownloaded || widget.message.localFilePath != null) {
         _initAudioPlayer();
       } else {
-         AppLogger.d("[DEBUG InitState] No local audio source for player init - will need download.");
+         // AppLogger.d("[DEBUG InitState] No local audio source for player init - will need download.");
       }
     }
     
@@ -3505,193 +3507,3 @@ class _MessageBubbleState extends ConsumerState<_MessageBubble> with AutomaticKe
     }
   }
 } 
-
-/// A widget for displaying call events in the center of the chat
-class _CallEventMessage extends StatelessWidget {
-  final Message message;
-
-  const _CallEventMessage({
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    // Extract call information from the message
-    final callStatus = message.metadata?['status'] as String? ?? 'ended';
-    final callType = message.metadata?['callType'] as String? ?? 'audio';
-    int? duration = message.metadata?['duration'] as int?;
-    final callerId = message.metadata?['callerId'] as String?;
-    final calleeId = message.metadata?['calleeId'] as String?;
-    
-    // Fix missing duration for calls that were answered but might not have a duration set
-    final startTimeMs = message.metadata?['startTime'] as int?;
-    final endTimeMs = message.metadata?['endTime'] as int?;
-    if (duration == null && startTimeMs != null && endTimeMs != null && 
-        (callStatus == 'completed' || callStatus == 'ended')) {
-      // Calculate duration from timestamps - convert milliseconds to seconds
-      duration = ((endTimeMs - startTimeMs) / 1000).round();
-      AppLogger.d("[CallEventMessage] Calculated missing duration: $duration seconds");
-    }
-    
-    // Determine who made the call
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final isOutgoing = callerId == currentUserId;
-    
-    // Get date/time of the call
-    final callTime = message.createdAt;
-    final timeString = DateFormat.jm().format(callTime);
-
-    // Define status-based styling
-    IconData callIcon;
-    IconData? directionIcon = isOutgoing ? Icons.call_made_rounded : Icons.call_received_rounded;
-    Color iconColor;
-    Color bgColor;
-    String statusText;
-    
-    // Set colors and icons based on call status
-    switch (callStatus) {
-      case 'completed':
-        callIcon = callType == 'video' ? Icons.videocam_rounded : Icons.call_rounded;
-        iconColor = const Color(0xFF43A047); // Explicit green color
-        bgColor = const Color(0xFFE8F5E9); // Light green background
-        statusText = '${isOutgoing ? 'Outgoing' : 'Incoming'}';
-        break;
-      case 'missed':
-      case 'no_answer':
-        callIcon = callType == 'video' ? Icons.videocam_off_rounded : Icons.call_missed_rounded;
-        iconColor = const Color(0xFFFF8F00); // Explicit amber color
-        bgColor = const Color(0xFFFFF8E1); // Light amber background
-        statusText = 'Missed';
-        break;
-      case 'rejected':
-        callIcon = callType == 'video' ? Icons.videocam_off_rounded : Icons.call_end_rounded;
-        iconColor = const Color(0xFFE53935); // Explicit red color
-        bgColor = const Color(0xFFFFEBEE); // Light red background
-        statusText = isOutgoing ? 'Declined' : 'Rejected';
-        break;
-      default:
-        callIcon = callType == 'video' ? Icons.videocam_off_rounded : Icons.call_end_rounded;
-        iconColor = const Color(0xFF78909C); // Explicit grey color
-        bgColor = const Color(0xFFECEFF1); // Light grey background
-        statusText = 'Ended';
-        break;
-    }
-    
-    // Format duration nicely if available, show 0:00 for zero duration calls
-    String durationText = '';
-    int durationValue = duration ?? 0; // Use 0 as default duration if null
-    
-    // For missed/rejected calls, always show duration as 0
-    if (callStatus == 'missed' || callStatus == 'rejected' || callStatus == 'no_answer') {
-      durationValue = 0; // Explicitly make it zero for these call types
-    }
-    
-    // Format the duration value
-    final durationObj = Duration(seconds: durationValue);
-    if (durationObj.inHours > 0) {
-      durationText = '${durationObj.inHours}:${(durationObj.inMinutes % 60).toString().padLeft(2, '0')}:${(durationObj.inSeconds % 60).toString().padLeft(2, '0')}';
-    } else {
-      durationText = '${durationObj.inMinutes}:${(durationObj.inSeconds % 60).toString().padLeft(2, '0')}';
-    }
-    
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 40.0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: iconColor.withOpacity(0.3), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: iconColor.withOpacity(0.1),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Call type icon
-            Container(
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: iconColor.withOpacity(0.3), width: 1),
-              ),
-              child: Icon(callIcon, size: 16, color: iconColor),
-            ),
-            const SizedBox(width: 6),
-            
-            // Call info
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Call type & status
-                Row(
-                  children: [
-                    Text(
-                      '$statusText ${callType == 'video' ? 'Video' : 'Audio'} Call',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: iconColor,
-                      ),
-                    ),
-                    if (directionIcon != null) ...[
-                      const SizedBox(width: 4),
-                      Icon(directionIcon, size: 12, color: iconColor),
-                    ],
-                  ],
-                ),
-                
-                // Duration & time row
-                Row(
-                  children: [
-                    // Always show duration (even if it's 0)
-                    Icon(Icons.access_time, size: 10, color: iconColor),
-                    const SizedBox(width: 2),
-                    Text(
-                      durationText.isNotEmpty ? durationText : '0:00',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: iconColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Container(
-                      width: 2,
-                      height: 2,
-                      decoration: BoxDecoration(
-                        color: iconColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    // Always show time
-                    Text(
-                      timeString,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: iconColor,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

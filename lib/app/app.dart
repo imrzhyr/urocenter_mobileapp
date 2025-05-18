@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../core/theme/theme.dart';
 import 'routes.dart';
-import '../core/widgets/incoming_call_widget.dart';
 import '../core/services/call_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/in_app_notification_provider.dart';
@@ -14,17 +13,64 @@ import 'package:overlay_support/overlay_support.dart';
 import '../main.dart';
 
 /// The main app component that sets up routing and initial state
-class UroApp extends ConsumerWidget {
+class UroApp extends ConsumerStatefulWidget {
   const UroApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UroApp> createState() => _UroAppState();
+}
+
+class _UroAppState extends ConsumerState<UroApp> {
+  @override
+  void initState() {
+    super.initState();
+    
+    // Initialize the FCM handler after build with a post-frame callback
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Add a small delay before initializing FCM handler
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Initialize FCM handler
+      try {
+        final fcmHandler = ref.read(fcmHandlerProvider);
+        await fcmHandler.initialize();
+        AppLogger.d("[UroApp] FCM handler initialized successfully");
+      } catch (error) {
+        AppLogger.e("[UroApp] Error initializing FCM handler: $error");
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
-    final incomingCall = ref.watch(incomingCallProvider);
     final themeMode = ref.watch(themeModeProvider);
     final notificationNotifier = ref.read(inAppNotificationProvider.notifier);
     
+    // Listen for incoming calls and navigate to call screen
+    ref.listen<IncomingCall?>(incomingCallProvider, (previous, current) {
+      if (current != null) {
+        AppLogger.d("[UroApp] Received incoming call from: ${current.callerName}");
+        
+        // Create call parameters
+        final callParams = {
+          'callId': current.callId,
+          'partnerName': current.callerName.isNotEmpty ? current.callerName : "Unknown Caller",
+          'isCaller': false,
+          'isIncoming': true,
+        };
+        
+        // Navigate to call screen directly without showing notification overlay
+        router.pushNamed(
+          RouteNames.callScreen,
+          extra: callParams,
+        );
+      }
+    });
+    
     ref.listen<AsyncValue<NotificationData?>>(globalIncomingMessagesProvider, (previous, next) {
+      AppLogger.d("[UroApp Listener] Global message stream event received: hasValue=${next.hasValue}, hasError=${next.hasError}");
+      
       if (next.hasValue && next.value != null) {
         final notificationData = next.value!;
         AppLogger.d("[UroApp Listener] Received potential notification: ${notificationData.chatId}");
@@ -44,7 +90,12 @@ class UroApp extends ConsumerWidget {
         // Only show if NOT on the *specific* target chat screen
         if (!isOnTargetChatScreen) {
           AppLogger.i("[UroApp Listener] Triggering overlay notification for chat: ${notificationData.chatId}");
-          notificationNotifier.showNotification(notificationData); // Trigger overlay
+          try {
+            notificationNotifier.showNotification(notificationData); // Trigger overlay
+            AppLogger.d("[UroApp Listener] Notification trigger function called successfully");
+          } catch (e) {
+            AppLogger.e("[UroApp Listener] Error showing notification: $e");
+          }
         }
       } else if (next.hasError) {
         AppLogger.e("[UroApp Listener] Error in global message stream: ${next.error}", next.error, next.stackTrace);
@@ -56,24 +107,25 @@ class UroApp extends ConsumerWidget {
     final ui.TextDirection textDirection = context.locale.languageCode == 'ar'
         ? ui.TextDirection.rtl
         : ui.TextDirection.ltr;
-        
+    
+    AppLogger.d("[UroApp] Building app with OverlaySupport.global");
+    
+    // We MUST use OverlaySupport.global to enable in-app chat notifications
     return OverlaySupport.global(
       child: MaterialApp.router(
-      title: 'UroCenter',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.getLightTheme(currentLocale),
-      darkTheme: AppTheme.getDarkTheme(currentLocale),
-      themeMode: themeMode,
-      routerConfig: router,
-      localizationsDelegates: context.localizationDelegates,
-      supportedLocales: context.supportedLocales,
-      locale: context.locale,
-      builder: (context, child) {
+        title: 'UroCenter',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.getLightTheme(currentLocale),
+        darkTheme: AppTheme.getDarkTheme(currentLocale),
+        themeMode: themeMode,
+        routerConfig: router,
+        localizationsDelegates: context.localizationDelegates,
+        supportedLocales: context.supportedLocales,
+        locale: context.locale,
+        builder: (context, child) {
           return Directionality(
             textDirection: textDirection,
-            child: Stack(
-          children: [
-            ScrollConfiguration(
+            child: ScrollConfiguration(
               behavior: NoSplashScrollBehavior(),
               child: MediaQuery(
                 data: MediaQuery.of(context).copyWith(
@@ -82,14 +134,8 @@ class UroApp extends ConsumerWidget {
                 child: child ?? const SizedBox.shrink(),
               ),
             ),
-            if (incomingCall != null)
-               Positioned.fill(
-                  child: IncomingCallWidget(incomingCall: incomingCall),
-               ),
-          ],
-            ),
-        );
-      },
+          );
+        },
       ),
     );
   }

@@ -11,6 +11,8 @@ import '../../../core/theme/app_colors.dart'; // Import AppColors
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 /// A screen that checks the user's authentication and onboarding status
 /// and redirects them accordingly.
@@ -34,10 +36,28 @@ class _AuthCheckScreenState extends ConsumerState<AuthCheckScreen> {
   }
 
   Future<void> _updateFcmToken(String userId) async {
-    if (!mounted) return;
     try {
       FirebaseMessaging messaging = FirebaseMessaging.instance;
-      // Get the token
+      
+      // Special handling for iOS to get APNS token first
+      if (Platform.isIOS) {
+        try {
+          // Try to get APNS token specifically (iOS only)
+          final apnsToken = await messaging.getAPNSToken();
+          AppLogger.d("AuthCheckScreen: APNS token ${apnsToken != null ? 'retrieved' : 'not available yet'}: ${apnsToken ?? 'null'}");
+          
+          // If APNS token is not available, we can't get FCM token yet
+          if (apnsToken == null) {
+            AppLogger.w("AuthCheckScreen: APNS token not available yet, skipping FCM token update");
+            return; // Exit early but don't throw an error
+          }
+        } catch (apnsError) {
+          // Log but continue - getToken might still work
+          AppLogger.w("AuthCheckScreen: Error getting APNS token: $apnsError");
+        }
+      }
+      
+      // Get the FCM token
       String? token = await messaging.getToken();
       
       if (token != null) {
@@ -56,11 +76,17 @@ class _AuthCheckScreenState extends ConsumerState<AuthCheckScreen> {
          await userProfileService.saveUserProfile(userId: userId, data: tokenData);
          AppLogger.d("AuthCheckScreen: FCM Token saved/updated for user $userId");
       } else {
-         AppLogger.e("AuthCheckScreen: Failed to retrieve FCM token (getToken returned null).");
+         AppLogger.w("AuthCheckScreen: FCM token not available yet (getToken returned null)");
+         // Don't treat this as an error, just log a warning
       }
     } catch (e) {
-       AppLogger.e("AuthCheckScreen: Error getting or saving FCM token: $e");
-       // Handle error silently for now (don't block navigation)
+       // Check for APNS token specific error and provide more helpful log
+       if (e.toString().contains('apns-token-not-set')) {
+         AppLogger.w("AuthCheckScreen: APNS token not set yet. This is normal during initial app setup on iOS.");
+       } else {
+         AppLogger.e("AuthCheckScreen: Error getting or saving FCM token: $e");
+       }
+       // Handle error silently, don't block navigation
     }
   }
 

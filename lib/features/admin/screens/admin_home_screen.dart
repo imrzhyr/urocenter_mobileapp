@@ -341,31 +341,22 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> with SingleTi
         },
       },
       {
-        'title': 'Consultations'.tr(),
-        'icon': Icons.chat_outlined,
+        'title': 'consultations.title'.tr(),
+        'icon': Icons.message_outlined,
         'color': Colors.green,
-        'onTap': () {
-          final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
-          adminDashboardState?.setTabIndex(0);
-        },
+        'onTap': () => context.go('/admin/consultations'),
       },
       {
-        'title': 'Calls'.tr(),
+        'title': 'calls.title'.tr(),
         'icon': Icons.call_outlined,
         'color': Colors.orange,
-        'onTap': () {
-          final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
-          adminDashboardState?.setTabIndex(1);
-        },
+        'onTap': () => context.go('/admin/calls'),
       },
       {
-        'title': 'Analytics'.tr(),
-        'icon': Icons.bar_chart_outlined,
+        'title': 'analytics.title'.tr(),
+        'icon': Icons.analytics_outlined,
         'color': Colors.purple,
-        'onTap': () {
-          final adminDashboardState = context.findAncestorStateOfType<AdminDashboardState>();
-          adminDashboardState?.setTabIndex(2);
-        },
+        'onTap': () => context.go('/admin/analytics'),
       },
     ];
     
@@ -628,11 +619,11 @@ class _WelcomeAdminCardState extends State<_WelcomeAdminCard> {
             const SizedBox(height: 20),
             Column(
               children: [
-                _buildSummaryItemRow('Users'.tr(), widget.userCount.toString(), Icons.group_outlined, theme),
-                Divider(color: Colors.white.withOpacity(0.25), height: 20, thickness: 0.8, indent: 0, endIndent: 0),
-                _buildSummaryItemRow('Active Chats'.tr(), widget.activeChats.toString(), Icons.chat_bubble_outline, theme),
-                Divider(color: Colors.white.withOpacity(0.25), height: 20, thickness: 0.8, indent: 0, endIndent: 0),
-                _buildSummaryItemRow('Revenue'.tr(), currencyFormatter.format(widget.revenue), Icons.attach_money_outlined, theme),
+                _buildSummaryItemRow('admin.users'.tr(), widget.userCount.toString(), Icons.group_outlined, theme),
+                _buildDivider(),
+                _buildSummaryItemRow('admin.active_chats'.tr(), widget.activeChats.toString(), Icons.chat_bubble_outline, theme),
+                _buildDivider(),
+                _buildSummaryItemRow('admin.revenue'.tr(), currencyFormatter.format(widget.revenue), Icons.attach_money_outlined, theme),
               ],
             ),
           ],
@@ -671,5 +662,9 @@ class _WelcomeAdminCardState extends State<_WelcomeAdminCard> {
         ],
       ),
     );
+  }
+
+  Widget _buildDivider() {
+    return Divider(color: Colors.white.withOpacity(0.25), height: 20, thickness: 0.8, indent: 0, endIndent: 0);
   }
 } 

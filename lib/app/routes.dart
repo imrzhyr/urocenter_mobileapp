@@ -313,7 +313,9 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
         pageBuilder: (context, state) => PageTransitions.fadeTransition(
           context: context, 
           state: state, 
-          child: const UserDashboard(),
+          child: UserDashboard(
+            extraData: state.extra as Map<String, dynamic>?,
+          ),
         ),
       ),
       GoRoute(
@@ -422,7 +424,9 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
       GoRoute(
         path: '/admin',
         name: RouteNames.adminDashboard,
-        builder: (context, state) => const AdminDashboard(),
+        builder: (context, state) => AdminDashboard(
+          extraData: state.extra as Map<String, dynamic>?,
+        ),
         routes: const [],
       ),
       GoRoute(
@@ -449,13 +453,44 @@ GoRouter _createRouter(riverpod.Ref<GoRouter> ref) {
         path: '/call', // Define the path for the call screen
         name: RouteNames.callScreen,
         pageBuilder: (context, state) {
-          // Pass the extra data from the pushNamed call to the CallScreen
-          return PageTransitions.slideTransition(
+          // Extract extra data
+          final extraData = state.extra as Map<String, dynamic>?;
+          // Check if this is an incoming call
+          final isIncoming = extraData?['isIncoming'] == true;
+          
+          if (isIncoming) {
+            // For incoming calls - use a full screen modal transition
+            return CustomTransitionPage<void>(
+              key: state.pageKey,
+              child: CallScreen(extraData: extraData),
+              fullscreenDialog: true,
+              transitionDuration: const Duration(milliseconds: 400),
+              reverseTransitionDuration: const Duration(milliseconds: 300),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                // Fade in quickly with a slight scale
+                final fadeAnimation = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOut,
+                );
+                
+                return FadeTransition(
+                  opacity: fadeAnimation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 1.05, end: 1.0).animate(fadeAnimation),
+                    child: child,
+                  ),
+                );
+              },
+            );
+          }
+          
+          // For outgoing calls - slide up from bottom
+          return PageTransitions.slideFadeTransition(
             context: context,
             state: state,
-            direction: SlideDirection.fromBottom, // Example transition
+            direction: SlideDirection.fromBottom,
             child: CallScreen(
-              extraData: state.extra as Map<String, dynamic>?,
+              extraData: extraData,
             ),
           );
         },

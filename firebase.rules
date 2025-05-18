@@ -57,8 +57,11 @@ service cloud.firestore {
 
     // --- Chats ---
     match /chats/{chatId} {
-      // Basic chat document permissions
-      allow read: if isSignedIn() && (
+      // Allow any authenticated user to list/query the chats collection
+      allow list: if isSignedIn();
+      
+      // Allow document read only if user is a participant
+      allow get: if isSignedIn() && (
                     isExistingParticipant(chatId) || 
                     isAdmin()
                   );
@@ -98,25 +101,49 @@ service cloud.firestore {
 
     // --- Video Calls ---
     match /calls/{callId} {
-      // Allow creating a call if you're either the caller or callee
-      allow create: if isSignedIn();
+      // Helper function to check if user is participant in call
+      function isCallParticipant() {
+        let callData = resource.data;
+        return isSignedIn() && 
+               callData != null && 
+               (callData.callerId == request.auth.uid || 
+                callData.calleeId == request.auth.uid);
+      }
+      
+      // Helper for new call creation
+      function isCallParticipantInRequest() {
+        let callData = request.resource.data;
+        return isSignedIn() && 
+               callData != null && 
+               (callData.callerId == request.auth.uid || 
+                callData.calleeId == request.auth.uid);
+      }
+      
+      // Allow creating a call if you're either the caller or callee in the request
+      allow create: if isCallParticipantInRequest() || isAdmin();
       
       // Allow reading a call document if you're a participant or an admin
-      allow read: if isSignedIn();
+      allow read: if isCallParticipant() || isAdmin();
       
-      // Allow updating a call document as long as you're signed in
-      allow update: if isSignedIn();
+      // Allow updating if you're a participant or admin
+      allow update: if isCallParticipant() || isAdmin();
       
       // Only admins can delete call records
       allow delete: if isAdmin();
       
       // Allow access to ICE candidate subcollections
       match /callerCandidates/{candidateId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() && 
+                             (get(/databases/$(database)/documents/calls/$(callId)).data.callerId == request.auth.uid || 
+                              get(/databases/$(database)/documents/calls/$(callId)).data.calleeId == request.auth.uid || 
+                              isAdmin());
       }
       
       match /calleeCandidates/{candidateId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() && 
+                             (get(/databases/$(database)/documents/calls/$(callId)).data.callerId == request.auth.uid || 
+                              get(/databases/$(database)/documents/calls/$(callId)).data.calleeId == request.auth.uid || 
+                              isAdmin());
       }
     }
 
@@ -126,11 +153,6 @@ service cloud.firestore {
       allow read: if isSignedIn();
       // Only admins can create/update/delete tokens
       allow write: if isAdmin();
-    }
-
-    // --- Call History ---
-    match /call_history/{historyId} {
-      allow read, write: if isSignedIn();
     }
 
     // --- Schedule and Appointments ---

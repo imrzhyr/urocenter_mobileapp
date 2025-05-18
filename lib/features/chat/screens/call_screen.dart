@@ -9,8 +9,14 @@ import 'package:urocenter/features/chat/providers/call_controller.dart';
 import 'package:urocenter/features/chat/models/call_params.dart';
 import 'package:urocenter/core/widgets/circular_icon_button.dart';
 import 'package:urocenter/core/widgets/animated_loader.dart';
+import 'package:urocenter/core/utils/haptic_utils.dart';
+import 'package:urocenter/app/routes.dart';
+import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:urocenter/providers/service_providers.dart';
+import 'package:urocenter/core/services/sound_service.dart';
 
-/// Screen for handling audio calls with Agora - Simplified for audio only
+/// A unified screen for handling all call states: incoming, outgoing, and connected
 class CallScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? extraData;
 
@@ -20,17 +26,70 @@ class CallScreen extends ConsumerStatefulWidget {
   ConsumerState<CallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends ConsumerState<CallScreen> {
+class _CallScreenState extends ConsumerState<CallScreen> with SingleTickerProviderStateMixin {
   Timer? _callDurationTimer;
   Duration _callDuration = Duration.zero;
   String _partnerName = 'Contact';
-  bool _hasSetupListeners = false; // Track if listeners are set up
-
+  bool _hasSetupListeners = false;
+  late AnimationController _animController;
+  late Animation<double> _pulseAnimation;
+  bool _isMuted = false;
+  bool _isSpeakerOn = true;
+  Timer? _durationUpdateTimer;
+  bool _soundsInitialized = false;
+  SoundService? _soundService;
+  
   @override
   void initState() {
     super.initState();
     AppLogger.d("CallScreen: initState called");
 
+    // Setup animations
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    
+    // Pulsing animation for avatar in ringing state
+    _pulseAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.05)
+          .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.05, end: 1.0)
+          .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 50,
+      ),
+    ]).animate(_animController);
+    
+    // Start and repeat the animation
+    _animController.forward();
+    _animController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _animController.repeat();
+      }
+    });
+    
+    // Check if we should end call immediately
+    final shouldEndCall = widget.extraData?['endCallImmediately'] == true;
+    if (shouldEndCall) {
+      // If this flag is set, end the call immediately
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final params = CallParams.fromMap(widget.extraData);
+        if (params != null) {
+          final callController = ref.read(callControllerProvider(params.toRecord()).notifier);
+          callController.hangUp();
+          // Go back
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      });
+      return;
+    }
+    
     // Parse and validate parameters
     final params = CallParams.fromMap(widget.extraData);
     if (params == null) {
@@ -38,80 +97,203 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       return;
     }
 
-    // Get partner name from params if available
+    // Check if we have saved call duration and restore it
+    if (widget.extraData != null && 
+        widget.extraData!.containsKey('currentDuration') && 
+        widget.extraData!['currentDuration'] is int) {
+      final savedDuration = widget.extraData!['currentDuration'] as int;
+      if (savedDuration > 0) {
+        setState(() {
+          _callDuration = Duration(seconds: savedDuration);
+          AppLogger.d("CallScreen: Restored call duration: ${_formatDuration(_callDuration)}");
+        });
+      }
+    }
+
+    // Get partner name from params
     if (params.partnerName.isNotEmpty) {
       _partnerName = params.partnerName;
       AppLogger.d("CallScreen: Using provided partner name: ${params.partnerName}");
     } else {
-      // Use a fallback if partner name is empty
       _partnerName = 'Call Participant';
       AppLogger.w("CallScreen: Empty partner name received, using fallback name");
     }
 
-    AppLogger.d("CallScreen: Valid parameters received for call ID: ${params.callId}");
-    
-    // Use post-frame callback to ensure UI is built before accessing the provider
+    // Use post-frame callback to ensure UI is built before accessing provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       
-      // Access provider after UI is ready
-      final controller = ref.read(callControllerProvider(params.toRecord()).notifier);
-      AppLogger.d("CallScreen: Call controller initialized for call ID: ${params.callId}");
+      _setupCallStateListeners(params);
       
-      // If we're the callee (the one receiving the call), automatically answer
-      if (!params.isCaller && params.callId.isNotEmpty) {
-        AppLogger.d("CallScreen: Auto-answering incoming call as callee");
-        // Short delay to ensure controller is fully initialized
-        Future.delayed(const Duration(milliseconds: 500), () {
-          controller.answerCall();
+      // Register this call with the active call provider when it starts
+      _updateActiveCall(params);
+      
+      // Initialize sounds based on call state
+      _initializeCallSounds(params);
+      
+      // Activate haptic feedback for incoming calls
+      if (!params.isCaller) {
+        HapticUtils.heavyTap();
+        // Schedule periodic vibrations
+        Timer.periodic(const Duration(seconds: 3), (timer) {
+          if (!mounted || ref.read(callControllerProvider(params.toRecord())).connectionState != CallConnectionState.ringing) {
+            timer.cancel();
+            return;
+          }
+          HapticUtils.heavyTap();
         });
-      }
-      
-      // Set up timer and state listeners only once
-      if (!_hasSetupListeners) {
-        _setupCallStateListeners(params);
-        _hasSetupListeners = true;
       }
     });
   }
-
-  // Combined method to set up all state listeners in one place
-  void _setupCallStateListeners(CallParams params) {
+  
+  void _initializeCallSounds(CallParams params) {
+    if (_soundsInitialized) return;
+    _soundsInitialized = true;
+    
+    final soundService = ref.read(soundServiceProvider);
+    // Store soundService reference for dispose
+    _soundService = soundService;
+    
     final callState = ref.read(callControllerProvider(params.toRecord()));
     
-    // Start timer immediately if already connected
+    // Start appropriate sound based on call state
+    switch (callState.connectionState) {
+      case CallConnectionState.ringing:
+        if (params.isIncoming) {
+          // Play incoming call ringtone
+          soundService.playIncomingRingtone();
+        } else {
+          // Play outgoing dial tone
+          soundService.playDialingSound();
+        }
+        break;
+        
+      case CallConnectionState.connecting:
+        // Play outgoing dial tone
+        if (params.isCaller) {
+          soundService.playDialingSound();
+        }
+        break;
+        
+      default:
+        // No sound for other states
+        break;
+    }
+  }
+  
+  void _updateActiveCall(CallParams params) {
+    // Create active call data
+    final activeCallData = params.toMap();
+    
+    // Add current duration if available
+    if (_callDuration.inSeconds > 0) {
+      activeCallData['currentDuration'] = _callDuration.inSeconds;
+    }
+    
+    // Get a reference to the provider before setting up the timer
+    final activeCallProviderRef = ref.read(activeCallProvider.notifier);
+    
+    // Schedule a periodic update every 5 seconds
+    _durationUpdateTimer?.cancel();
+    _durationUpdateTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        // Update the duration in the active call provider - using stored reference
+        final currentActiveCall = activeCallProviderRef.state;
+        if (currentActiveCall != null && 
+            currentActiveCall['callId'] == params.callId &&
+            _callDuration.inSeconds > 0) {
+          activeCallProviderRef.state = {
+            ...currentActiveCall,
+            'currentDuration': _callDuration.inSeconds,
+          };
+        }
+      } catch (e) {
+        // Ignore errors if widget was disposed
+        timer.cancel();
+      }
+    });
+    
+    // Set active call in provider
+    activeCallProviderRef.state = activeCallData;
+  }
+
+  void _setupCallStateListeners(CallParams params) {
+    if (_hasSetupListeners) return;
+    _hasSetupListeners = true;
+    
+    final callState = ref.read(callControllerProvider(params.toRecord()));
+    final soundService = ref.read(soundServiceProvider);
+    final activeCallProviderRef = ref.read(activeCallProvider.notifier);
+    
+    // Save navigator context for safe usage in callbacks
+    final navigatorContext = context;
+    final navigator = Navigator.of(navigatorContext);
+    
+    // If already connected, start timer
     if (callState.connectionState == CallConnectionState.connected) {
       _startTimer();
     }
     
-    // Listen for state changes that affect timer and call status
+    // Listen for state changes
     ref.listenManual(callControllerProvider(params.toRecord()), (previous, next) {
-      // First check if widget is still mounted before taking any action
-      if (!mounted) {
-        AppLogger.d("CallScreen: Ignoring state change as widget is no longer mounted");
-        return;
-      }
+      if (!mounted) return;
       
-      // Handle timer start - when call becomes connected
+      // Handle timer management based on state changes
       if (previous?.connectionState != CallConnectionState.connected && 
           next.connectionState == CallConnectionState.connected) {
+        // Call just connected
         _startTimer();
-      } 
-      // Handle timer stop - when call disconnects after being connected
-      else if (previous?.connectionState == CallConnectionState.connected &&
-               next.connectionState != CallConnectionState.connected) {
-        // Handle stop timer safely
-        if (_callDurationTimer != null) {
-          _callDurationTimer!.cancel();
-          _callDurationTimer = null;
-          AppLogger.d("CallScreen: Timer stopped due to call state change");
-        }
+        HapticUtils.mediumTap(); // Give feedback when call connects
+        
+        // Play connect sound
+        soundService.playConnectSound();
+      } else if (previous?.connectionState == CallConnectionState.connected &&
+                next.connectionState != CallConnectionState.connected) {
+        // Call just disconnected
+        _stopTimer();
+        
+        // Play disconnect sound
+        soundService.playDisconnectSound();
+      } else if (previous?.connectionState == CallConnectionState.ringing &&
+                 next.connectionState == CallConnectionState.connecting) {
+        // Call transitioning from ringing to connecting
+        // Stop ringtone as appropriate
+        soundService.stopRingtone();
+      } else if (next.connectionState == CallConnectionState.ended ||
+                 next.connectionState == CallConnectionState.failed) {
+        // Call ended or failed
+        soundService.stopAllSounds();
       }
       
-      // Special handling for call end - preserve the final duration
+      // Log call completion
       if (previous?.connectionState == CallConnectionState.connected && 
           next.connectionState == CallConnectionState.ended) {
-        AppLogger.d("CallScreen: Call ended with final duration: ${_formatDuration(_callDuration)}");
+        AppLogger.d("CallScreen: Call ended with duration: ${_formatDuration(_callDuration)}");
+        
+        // Clear active call when ended - using stored reference
+        activeCallProviderRef.state = null;
+        
+        // Store params locally to avoid capturing ref in the closure
+        final paramsRecord = params.toRecord();
+        
+        // Auto-close screen after call ends with delay
+        Future.delayed(const Duration(seconds: 2), () {
+          // Only proceed if widget is still mounted
+          if (!mounted) return;
+          
+          try {
+            // Use stored navigator reference instead of context
+            navigator.pop();
+          } catch (e) {
+            // Ignore errors if navigator context is invalid
+            AppLogger.d("CallScreen: Error popping navigator: $e");
+          }
+        });
       }
     });
   }
@@ -129,39 +311,37 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         });
       }
     });
-    
-    AppLogger.d("CallScreen: Call duration timer started");
   }
 
-  void _stopTimer({bool resetDuration = true}) {
+  void _stopTimer() {
     _callDurationTimer?.cancel();
     _callDurationTimer = null;
-    
-    // Only reset duration if specified AND widget is still mounted
-    // This prevents setState being called during disposal
-    if (resetDuration && mounted) {
-      // Using try-catch to prevent errors if widget is in an invalid state
-      try {
-        setState(() {
-          _callDuration = Duration.zero;
-        });
-      } catch (e) {
-        AppLogger.e("CallScreen: Error in _stopTimer: $e");
-        // Just set the value directly without setState if there's an error
-        _callDuration = Duration.zero;
-      }
-    }
-    
-    AppLogger.d("CallScreen: Call duration timer stopped, duration preserved: $_callDuration");
   }
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(duration.inHours);
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void dispose() {
+    // Cancel all timers first
+    _stopTimer();
+    _animController.dispose();
+    _durationUpdateTimer?.cancel();
     
-    return hours == '00' ? '$minutes:$seconds' : '$hours:$minutes:$seconds';
+    // Save reference to sound service locally to avoid using ref after dispose
+    final localSoundService = _soundService;
+    
+    // Call super.dispose() before trying to use ref to avoid errors
+    super.dispose();
+    
+    // Stop sounds using the saved reference
+    if (localSoundService != null) {
+      localSoundService.stopAllSounds();
+    }
   }
 
   @override
@@ -172,14 +352,339 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       return _buildErrorScaffold('Invalid call parameters');
     }
     
-    return _buildCallScreen(params);
+    final callState = ref.watch(callControllerProvider(params.toRecord()));
+    
+    return WillPopScope(
+      // Prevent back button from doing anything during a call
+      onWillPop: () async {
+        // Prevent any back navigation by returning false
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.primary,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Top bar with minimal controls
+              _buildTopBar(params.isCaller),
+              
+              // Main call UI (expands to fill available space)
+              Expanded(child: _buildCallUI(params, callState)),
+              
+              // Bottom action buttons
+              _buildCallControls(params, callState),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar(bool isCaller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // Empty container where minimize button used to be
+          Container(),
+          const Spacer(),
+          // Could add additional controls here
+        ],
+      ),
+    );
+  }
+  
+  // Method to handle call minimization - kept but unused now
+  void _minimizeCall() {
+    final params = CallParams.fromMap(widget.extraData);
+    if (params == null) {
+      // Clear active call data when popping
+      ref.read(activeCallProvider.notifier).state = null;
+      Navigator.of(context).pop();
+      return;
+    }
+    
+    // Just pop the current screen and clear active call
+    ref.read(activeCallProvider.notifier).state = null;
+    Navigator.of(context).pop();
+  }
+  
+  Widget _buildCallUI(CallParams params, CallControllerState callState) {
+    // Use isIncoming directly from params instead of deriving it
+    final isIncoming = params.isIncoming && callState.connectionState == CallConnectionState.ringing;
+    
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Caller avatar with animation for ringing state
+        AnimatedBuilder(
+          animation: _animController,
+          builder: (context, child) {
+            // Pulse animation only for ringing state
+            final shouldPulse = callState.connectionState == CallConnectionState.ringing;
+            
+            return Transform.scale(
+              scale: shouldPulse ? _pulseAnimation.value : 1.0,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white24,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.1),
+                      blurRadius: 15,
+                      spreadRadius: shouldPulse ? 5 : 0,
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 70,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        
+        const SizedBox(height: 32),
+        
+        // Partner name
+        Text(
+          _partnerName,
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Call status with animation
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _buildStatusText(callState.connectionState, isIncoming),
+        ),
+        
+        // Call timer (visible only when connected)
+        AnimatedOpacity(
+          opacity: callState.connectionState == CallConnectionState.connected ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _formatDuration(_callDuration),
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildStatusText(CallConnectionState state, bool isIncoming) {
+    String text;
+    Color color;
+    
+    switch (state) {
+      case CallConnectionState.connecting:
+        text = 'Connecting...';
+        color = Colors.white70;
+        break;
+      case CallConnectionState.ringing:
+        text = isIncoming ? 'Incoming call' : 'Ringing...';
+        color = isIncoming ? Colors.green.shade300 : Colors.white70;
+        break;
+      case CallConnectionState.connected:
+        text = 'Connected';
+        color = Colors.green;
+        break;
+      case CallConnectionState.ended:
+        text = 'Call ended';
+        color = Colors.red.shade300;
+        break;
+      case CallConnectionState.failed:
+        text = 'Call failed';
+        color = Colors.red;
+        break;
+      default:
+        text = '';
+        color = Colors.white70;
+    }
+    
+    return Text(
+      text,
+      key: ValueKey(state), // For AnimatedSwitcher
+      style: TextStyle(
+        fontSize: 18,
+        color: color,
+      ),
+    );
+  }
+  
+  Widget _buildCallControls(CallParams params, CallControllerState callState) {
+    // Use isIncoming directly from params
+    final isIncoming = params.isIncoming && callState.connectionState == CallConnectionState.ringing;
+    final callController = ref.read(callControllerProvider(params.toRecord()).notifier);
+    
+    // Bottom padding
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    return Container(
+      padding: EdgeInsets.only(
+        left: 24, 
+        right: 24, 
+        bottom: 24 + bottomPadding,
+        top: 16,
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _buildCallButtonsForState(params, callState, isIncoming, callController),
+      ),
+    );
+  }
+  
+  Widget _buildCallButtonsForState(
+    CallParams params,
+    CallControllerState callState,
+    bool isIncoming,
+    CallController callController
+  ) {
+    // For call ended state
+    if (callState.connectionState == CallConnectionState.ended ||
+        callState.connectionState == CallConnectionState.failed) {
+      return Center(
+        child: ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            backgroundColor: Colors.white24,
+          ),
+          child: Text('Close', style: TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+    
+    // For incoming call
+    if (isIncoming) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Reject button
+          CircularIconButton(
+            icon: Icons.call_end,
+            backgroundColor: Colors.red,
+            onPressed: () {
+              HapticUtils.mediumTap();
+              callController.rejectCall();
+              // Stop ringtone
+              ref.read(soundServiceProvider).stopRingtone();
+              // Clear active call when rejected
+              ref.read(activeCallProvider.notifier).state = null;
+              Navigator.of(context).pop();
+            },
+            size: 70,
+          ),
+          
+          // Answer button
+          CircularIconButton(
+            icon: Icons.call,
+            backgroundColor: Colors.green,
+            onPressed: () {
+              HapticUtils.mediumTap();
+              // Stop ringtone
+              ref.read(soundServiceProvider).stopRingtone();
+              callController.answerCall();
+            },
+            size: 70,
+          ),
+        ],
+      );
+    }
+    
+    // For connected call
+    if (callState.connectionState == CallConnectionState.connected) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Mute button - white background when active
+          CircularIconButton(
+            icon: _isMuted ? Icons.mic_off : Icons.mic,
+            backgroundColor: _isMuted ? Colors.white : Colors.white12,
+            iconColor: _isMuted ? AppColors.primary : Colors.white,
+            onPressed: () {
+              setState(() {
+                _isMuted = !_isMuted;
+              });
+              callController.toggleMute();
+            },
+            size: 60,
+          ),
+          
+          // End call button
+          CircularIconButton(
+            icon: Icons.call_end,
+            backgroundColor: Colors.red,
+            onPressed: () {
+              callController.hangUp();
+              // Play disconnect sound
+              ref.read(soundServiceProvider).playDisconnectSound();
+              // Clear active call when ended
+              ref.read(activeCallProvider.notifier).state = null;
+              Navigator.of(context).pop();
+            },
+            size: 70,
+          ),
+          
+          // Speaker button - white background when active
+          CircularIconButton(
+            icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
+            backgroundColor: _isSpeakerOn ? Colors.white : Colors.white12,
+            iconColor: _isSpeakerOn ? AppColors.primary : Colors.white,
+            onPressed: () {
+              setState(() {
+                _isSpeakerOn = !_isSpeakerOn;
+              });
+              callController.toggleSpeaker();
+            },
+            size: 60,
+          ),
+        ],
+      );
+    }
+    
+    // For outgoing call (ringing or connecting)
+    return Center(
+      child: CircularIconButton(
+        icon: Icons.call_end,
+        backgroundColor: Colors.red,
+        onPressed: () {
+          callController.hangUp();
+          // Stop dialing sound
+          ref.read(soundServiceProvider).stopDialingSound();
+          // Clear active call when ended
+          ref.read(activeCallProvider.notifier).state = null;
+          Navigator.of(context).pop();
+        },
+        size: 70,
+      ),
+    );
   }
 
   Widget _buildErrorScaffold(String errorMessage) {
     return Scaffold(
       backgroundColor: AppColors.card,
       appBar: AppBar(
-        title: Text('chat.call_error_title'.tr()),
+        title: Text('Error'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -197,289 +702,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('common.back'.tr()),
+              child: const Text('Close'),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildCallScreen(CallParams params) {
-    // Listen to call state
-    final callState = ref.watch(callControllerProvider(params.toRecord()));
-    
-    return Scaffold(
-      backgroundColor: AppColors.card,
-      appBar: AppBar(
-        title: Text('chat.start_audio_call'.tr()),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-              ),
-      body: SafeArea(
-              child: Center(
-                child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-              // Call status and partner info
-              _buildCallerInfo(params, callState),
-                            
-              // Audio waveform or call status icon
-              _buildCallStatusVisual(callState),
-              
-              // Call controls
-              _buildCallControls(params, callState),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildCallerInfo(CallParams params, CallControllerState callState) {
-    return Column(
-      children: [
-        // User avatar or placeholder
-        Container(
-              width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.person,
-            size: 60,
-            color: AppColors.primary,
-                ),
-        ),
-        const SizedBox(height: 20),
-        
-        // User name
-        Text(
-          _partnerName,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        
-        // Call status text
-                      Text(
-          _getCallStatusText(callState),
-          style: TextStyle(
-            fontSize: 16,
-            color: _getCallStatusColor(callState),
-          ),
-                  ),
-        
-        // Call timer
-        if (callState.connectionState == CallConnectionState.connected)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text(
-              _formatDuration(_callDuration),
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-                    ),
-                  ),
-                ),
-        ],
-    );
-  }
-
-  Widget _buildCallStatusVisual(CallControllerState callState) {
-    // Return different visuals based on call state
-    switch (callState.connectionState) {
-      case CallConnectionState.connecting:
-      case CallConnectionState.ringing:
-        return const AnimatedLoader(size: 120);
-        
-      case CallConnectionState.connected:
-        // Audio waveform visualization would go here
-        // For now, just show a simple animation
-        return Container(
-          width: 200,
-          height: 100,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              return _buildAudioBar(index);
-            }),
-          ),
-        );
-        
-      case CallConnectionState.failed:
-        return const Icon(
-          Icons.error_outline,
-          size: 80,
-          color: Colors.red,
-        );
-        
-      case CallConnectionState.ended:
-        return const Icon(
-          Icons.call_end,
-          size: 80,
-          color: Colors.red,
-        );
-    }
-  }
-
-  // Simple animated audio bar for visualization
-  Widget _buildAudioBar(int index) {
-    // Create slightly randomized heights for bars based on index
-    final heights = [30.0, 45.0, 60.0, 40.0, 25.0];
-    final height = heights[index % heights.length];
-    
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: 10,
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(5),
-      ),
-    );
-  }
-
-  Widget _buildCallControls(CallParams params, CallControllerState callState) {
-    final callController = ref.read(callControllerProvider(params.toRecord()).notifier);
-    
-    // Don't show controls if call has ended or failed
-    if (callState.connectionState == CallConnectionState.ended || 
-        callState.connectionState == CallConnectionState.failed) {
-      return Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(),
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          ),
-          child: Text('common.close'.tr()),
-        ),
-      );
-    }
-    
-    // For connecting/ringing state (callee view)
-    if (!params.isCaller && 
-        (callState.connectionState == CallConnectionState.connecting || 
-         callState.connectionState == CallConnectionState.ringing)) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Reject button
-          CircularIconButton(
-            icon: Icons.call_end,
-            backgroundColor: Colors.red,
-            onPressed: () {
-              callController.rejectCall();
-              Navigator.of(context).pop();
-            },
-            size: 64,
-          ),
-          const SizedBox(width: 48),
-          
-          // Answer button
-          CircularIconButton(
-            icon: Icons.call,
-            backgroundColor: Colors.green,
-            onPressed: () => callController.answerCall(),
-            size: 64,
-          ),
-        ],
-      );
-    }
-
-    // For ongoing call
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        // Mute button
-        CircularIconButton(
-          icon: callState.isMuted ? Icons.mic_off : Icons.mic,
-          backgroundColor: callState.isMuted ? Colors.grey : AppColors.primary,
-          onPressed: () => callController.toggleMute(),
-          size: 56,
-        ),
-        
-        // End call button
-        CircularIconButton(
-          icon: Icons.call_end,
-          backgroundColor: Colors.red,
-          onPressed: () {
-            callController.hangUp();
-            Navigator.of(context).pop();
-          },
-          size: 64,
-        ),
-        
-        // Speaker button
-        CircularIconButton(
-          icon: callState.isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-          backgroundColor: callState.isSpeakerOn ? AppColors.primary : Colors.grey,
-          onPressed: () => callController.toggleSpeaker(),
-          size: 56,
-        ),
-      ],
-    );
-  }
-
-  String _getCallStatusText(CallControllerState callState) {
-    switch (callState.connectionState) {
-      case CallConnectionState.connecting:
-        return 'chat.call_status_connecting'.tr();
-      case CallConnectionState.ringing:
-        return 'chat.call_status_ringing'.tr();
-      case CallConnectionState.connected:
-        return 'chat.call_status_connected'.tr();
-      case CallConnectionState.ended:
-        // Additional check for ended calls with duration
-        if (callState.callStatus == 'completed' || 
-            (callState.callStatus == 'ended' && _callDuration.inSeconds > 0)) {
-          // Return a status that shows it was a successful call
-          return 'chat.call_completed'.tr();
-        }
-        // Otherwise handle as before
-        return callState.callStatus == 'rejected' ? 'chat.call_rejected'.tr() : 'chat.call_ended'.tr();
-      case CallConnectionState.failed:
-        return callState.errorMessage ?? 'chat.call_error_generic'.tr();
-    }
-  }
-
-  Color _getCallStatusColor(CallControllerState callState) {
-    switch (callState.connectionState) {
-      case CallConnectionState.connecting:
-      case CallConnectionState.ringing:
-        return Colors.orange;
-      case CallConnectionState.connected:
-        return Colors.green;
-      case CallConnectionState.ended:
-      case CallConnectionState.failed:
-        return Colors.red;
-    }
-    
-    // Default fallback color if none matched (shouldn't happen with enum)
-    return Colors.grey;
-  }
-
-  @override
-  void dispose() {
-    AppLogger.d("CallScreen: Disposing screen");
-    
-    // Cancel timer directly instead of using _stopTimer to avoid setState calls
-    if (_callDurationTimer != null) {
-      _callDurationTimer!.cancel();
-      _callDurationTimer = null;
-      AppLogger.d("CallScreen: Timer cancelled during dispose");
-    }
-    
-    super.dispose();
   }
 }

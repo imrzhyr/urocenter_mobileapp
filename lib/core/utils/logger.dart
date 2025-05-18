@@ -18,7 +18,7 @@ class AppLogger {
       dateTimeFormat: DateTimeFormat.onlyTimeAndSinceStart,
     ),
     // Only show logs in debug mode
-    level: kDebugMode ? Level.trace : Level.error,
+    level: kDebugMode ? Level.info : Level.error,
   );
 
   /// Log a debug message, used for development-time information
@@ -34,6 +34,16 @@ class AppLogger {
   /// Log a warning message, used for potential issues
   static void w(String message, [dynamic error, StackTrace? stackTrace]) {
     _logger.w(message, error: error, stackTrace: stackTrace);
+  }
+
+  /// Log a call-related warning without triggering system alerts
+  static void callWarning(String message, [dynamic error, StackTrace? stackTrace]) {
+    // Skip visual alerts for call-related messages, but still log them
+    if (kDebugMode) {
+      print('[CALL WARNING] $message');
+      if (error != null) print('Error: $error');
+      if (stackTrace != null) print('Stack trace: $stackTrace');
+    }
   }
 
   /// Log an error message, used for actual errors

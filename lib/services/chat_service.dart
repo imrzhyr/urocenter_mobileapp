@@ -102,8 +102,17 @@ class ChatService {
     final userProfileService = _ref.read(userProfileServiceProvider); // Assume userProfileServiceProvider exists
     try {
       final userProfile = await userProfileService.getUserProfile(message.senderId);
-      // <<< Change to look for 'fullName' instead of 'displayName' or 'email' >>>
-      senderName = userProfile?['fullName'] as String? ?? 'Unknown User'; 
+      // Check if this is an admin user
+      final bool isAdmin = userProfile?['isAdmin'] == true;
+      
+      if (isAdmin) {
+        // Always use Dr. Ali Kamal for admin users
+        senderName = "Dr. Ali Kamal";
+        AppLogger.d("[ChatService] Using admin doctor name: $senderName");
+      } else {
+        // For regular users, use their full name
+        senderName = userProfile?['fullName'] as String? ?? 'Unknown User';
+      }
     } catch (e) {
       AppLogger.e("Error fetching sender name for chat update: $e");
     }
@@ -135,7 +144,7 @@ class ChatService {
 
       batch.set(chatDocRef, chatUpdateData, SetOptions(merge: true));
 
-      AppLogger.d("[DEBUG] Committing batch for chatId: $chatId (MESSAGE + CHAT DOC UPDATE with senderName)");
+      AppLogger.d("[DEBUG] Committing batch for chatId: $chatId (MESSAGE + CHAT DOC UPDATE with senderName: $senderName)");
       await batch.commit();
       AppLogger.d("ChatService: Message sent and chat document updated for $chatId");
     } catch (e) {
@@ -469,70 +478,90 @@ class ChatService {
       return Stream.value(null); // Return a stream with a single null value
     }
 
+    // Check if user is an admin or properly authenticated
+    _checkUserAuthenticationStatus(currentUserId).then((isAuthenticated) {
+      if (!isAuthenticated) {
+        AppLogger.w("[ChatService] User not authenticated: ${_auth.currentUser!.email}");
+        // We don't stop the stream here, but log the warning
+      }
+    }).catchError((e) {
+      AppLogger.e("[ChatService] Error checking user auth status: $e");
+    });
+
     AppLogger.d("[ChatService] Setting up global message listener for user: $currentUserId");
 
-    return _firestore
-        .collection('chats')
-        .where('participants', arrayContains: currentUserId)
-        // .orderBy('lastMessageTime', descending: true) // Ordering might be complex with filters
-        .snapshots(includeMetadataChanges: true) // Listen for metadata changes
-        .map((querySnapshot) {
-      AppLogger.d("[ChatService Global Listener] Received snapshot with ${querySnapshot.docs.length} docs. Metadata: hasPendingWrites=${querySnapshot.metadata.hasPendingWrites}");
-      // Find the document that triggered the notification (latest change, not from self)
-      DocumentChange? relevantChange;
-      for (var change in querySnapshot.docChanges) {
-          if (change.type == DocumentChangeType.modified && !change.doc.metadata.hasPendingWrites) {
-              final data = change.doc.data() as Map<String, dynamic>?;
-              if (data != null && data['lastMessageSenderId'] != currentUserId && data['lastMessageTime'] != null) {
-                // This looks like a new message from someone else
-                // Prioritize this change
-                AppLogger.d("[ChatService Global Listener] Potential notification change detected for doc: ${change.doc.id}");
-                relevantChange = change;
-                break; // Process the first valid change
-              }
-          }
-      }
+    try {
+      return _firestore
+          .collection('chats')
+          .where('participants', arrayContains: currentUserId)
+          // .orderBy('lastMessageTime', descending: true) // Ordering might be complex with filters
+          .snapshots(includeMetadataChanges: true) // Listen for metadata changes
+          .map((querySnapshot) {
+        AppLogger.d("[ChatService Global Listener] Received snapshot with ${querySnapshot.docs.length} docs. Metadata: hasPendingWrites=${querySnapshot.metadata.hasPendingWrites}");
+        // Find the document that triggered the notification (latest change, not from self)
+        DocumentChange? relevantChange;
+        for (var change in querySnapshot.docChanges) {
+            if (change.type == DocumentChangeType.modified && !change.doc.metadata.hasPendingWrites) {
+                final data = change.doc.data() as Map<String, dynamic>?;
+                if (data != null && data['lastMessageSenderId'] != currentUserId && data['lastMessageTime'] != null) {
+                  // This looks like a new message from someone else
+                  // Prioritize this change
+                  AppLogger.d("[ChatService Global Listener] Potential notification change detected for doc: ${change.doc.id}");
+                  relevantChange = change;
+                  break; // Process the first valid change
+                }
+            }
+        }
 
-      if (relevantChange == null) {
-        AppLogger.d("[ChatService Global Listener] No relevant modified documents found in this snapshot.");
-        return null; // No notification-worthy change in this snapshot
-      }
-      
-      final doc = relevantChange.doc;
-      final data = doc.data() as Map<String, dynamic>; // Already checked for null
+        if (relevantChange == null) {
+          AppLogger.d("[ChatService Global Listener] No relevant modified documents found in this snapshot.");
+          return null; // No notification-worthy change in this snapshot
+        }
+        
+        final doc = relevantChange.doc;
+        final data = doc.data() as Map<String, dynamic>; // Already checked for null
 
-      AppLogger.i("[ChatService Global Listener] Processing notification for chat: ${doc.id}");
+        AppLogger.i("[ChatService Global Listener] Processing notification for chat: ${doc.id}");
 
-      // Extract data for notification
-      final String chatId = doc.id;
-      final String senderName = data['lastMessageSenderName'] as String? ?? 'Unknown User';
-      final String messageContent = data['lastMessageContent'] as String? ?? '';
-      final String messageType = data['lastMessageType'] as String? ?? MessageType.text.value;
+        // Extract data for notification
+        final String chatId = doc.id;
+        final String senderName = data['lastMessageSenderName'] as String? ?? 'Unknown User';
+        final String messageContent = data['lastMessageContent'] as String? ?? '';
+        final String messageType = data['lastMessageType'] as String? ?? MessageType.text.value;
 
-      String messageSnippet;
-      if (messageType == MessageType.text.value) {
-        messageSnippet = messageContent;
-      } else if (messageType == MessageType.image.value) {
-        messageSnippet = 'Sent an image'; // TODO: Localize
-      } else if (messageType == MessageType.document.value) {
-        messageSnippet = 'Sent a document'; // TODO: Localize
-      } else if (messageType == MessageType.voice.value) {
-        messageSnippet = 'Sent a voice message'; // TODO: Localize
-      } else {
-        messageSnippet = 'Sent a message'; // TODO: Localize
-      }
+        String messageSnippet;
+        if (messageType == MessageType.text.value) {
+          messageSnippet = messageContent;
+        } else if (messageType == MessageType.image.value) {
+          messageSnippet = 'Sent an image'; // TODO: Localize
+        } else if (messageType == MessageType.document.value) {
+          messageSnippet = 'Sent a document'; // TODO: Localize
+        } else if (messageType == MessageType.voice.value) {
+          messageSnippet = 'Sent a voice message'; // TODO: Localize
+        } else {
+          messageSnippet = 'Sent a message'; // TODO: Localize
+        }
 
-      // Return the data object
-      return NotificationData(
-        chatId: chatId,
-        senderName: senderName,
-        messageSnippet: messageSnippet,
-      );
+        // Return the data object
+        return NotificationData(
+          chatId: chatId,
+          senderName: senderName,
+          messageSnippet: messageSnippet,
+        );
 
-    }).handleError((error) {
-      AppLogger.e("Error in global incoming messages stream: $error");
-      return null; // Emit null on error
-    });
+      }).handleError((error) {
+        // More specific error handling by error type
+        if (error.toString().contains('permission-denied')) {
+          AppLogger.w("Permission denied in global message stream - user may not have access: $error");
+        } else {
+          AppLogger.e("Error in global incoming messages stream: $error");
+        }
+        return null; // Emit null on error
+      });
+    } catch (e) {
+      AppLogger.e("Error setting up global message stream: $e");
+      return Stream.value(null);
+    }
   }
 
   /// Sends a system message to a chat, used for call events and other system notifications
@@ -584,6 +613,34 @@ class ChatService {
       AppLogger.d("[ChatService] System message sent to chat $chatId");
     } catch (e) {
       AppLogger.e("[ChatService] Error sending system message: $e");
+    }
+  }
+
+  // Helper method to check if user is authenticated properly or is an admin
+  Future<bool> _checkUserAuthenticationStatus(String userId) async {
+    try {
+      // First check if this is an admin user
+      final userProfilePath = 'users/$userId';
+      final userDoc = await _firestore.doc(userProfilePath).get();
+      
+      if (userDoc.exists && userDoc.data() != null) {
+        final userData = userDoc.data()!;
+        // If user is admin, they're always authenticated
+        if (userData['isAdmin'] == true) {
+          AppLogger.d("[ChatService] Admin user detected, bypassing strict verification");
+          return true;
+        }
+      }
+      
+      // For regular users, check if they're properly authenticated
+      if (_auth.currentUser != null) {
+        return _auth.currentUser!.emailVerified || _auth.currentUser!.phoneNumber != null;
+      }
+      
+      return false;
+    } catch (e) {
+      AppLogger.e("[ChatService] Error checking authentication status: $e");
+      return true; // Default to allowing in case of error
     }
   }
 

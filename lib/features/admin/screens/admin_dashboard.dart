@@ -28,7 +28,9 @@ typedef NavigateToTabCallback = void Function(int index);
 
 /// Doctor dashboard screen with bottom navigation
 class AdminDashboard extends ConsumerStatefulWidget {
-  const AdminDashboard({super.key});
+  final Map<String, dynamic>? extraData;
+
+  const AdminDashboard({super.key, this.extraData});
 
   @override
   ConsumerState<AdminDashboard> createState() => AdminDashboardState();
@@ -39,6 +41,9 @@ class AdminDashboardState extends ConsumerState<AdminDashboard> with SingleTicke
   int _selectedIndex = 0;
   late AnimationController _animationController;
   
+  // Active call state
+  Map<String, dynamic>? _activeCallParams;
+  
   @override
   void initState() {
     super.initState();
@@ -48,6 +53,26 @@ class AdminDashboardState extends ConsumerState<AdminDashboard> with SingleTicke
     );
     _animationController.forward();
     listenForIncomingCalls();
+    _checkForActiveCall();
+  }
+  
+  void _checkForActiveCall() {
+    if (widget.extraData != null && widget.extraData!.containsKey('activeCall')) {
+      setState(() {
+        _activeCallParams = widget.extraData!['activeCall'] as Map<String, dynamic>?;
+        AppLogger.d("[AdminDashboard] Found active call in extraData: ${_activeCallParams?['callId']}");
+      });
+    }
+  }
+  
+  void _returnToActiveCall() {
+    if (_activeCallParams != null) {
+      HapticUtils.mediumTap();
+      context.pushNamed(
+        RouteNames.callScreen,
+        extra: _activeCallParams,
+      );
+    }
   }
   
   @override
@@ -90,17 +115,17 @@ class AdminDashboardState extends ConsumerState<AdminDashboard> with SingleTicke
       NavigationItem(
         icon: Icons.chat_outlined,
         activeIcon: Icons.chat,
-        label: 'Consultations'.tr(),
+        label: 'consultations.title'.tr(),
       ),
       NavigationItem(
         icon: Icons.call_outlined,
         activeIcon: Icons.call,
-        label: 'Calls'.tr(),
+        label: 'calls.title'.tr(),
       ),
       NavigationItem(
         icon: Icons.analytics_outlined,
         activeIcon: Icons.analytics,
-        label: 'Analytics'.tr(),
+        label: 'analytics.title'.tr(),
       ),
     ];
     

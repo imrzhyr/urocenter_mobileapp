@@ -5,6 +5,20 @@
     "tagline": "شريكك في الحلول الطبية",
     "get_started": "ابدأ الآن"
   },
+  "Call History": "سجل المكالمات",
+  "All": "الكل",
+  "Completed": "مكتملة",
+  "Missed": "فائتة",
+  "Rejected": "مرفوضة",
+  "Today": "اليوم",
+  "Search calls": "بحث المكالمات",
+  "No calls found": "لم يتم العثور على مكالمات",
+  "New calls will appear here": "ستظهر المكالمات الجديدة هنا",
+  "Try Again": "حاول مرة أخرى",
+  "Error loading calls": "خطأ في تحميل المكالمات",
+  "Duration: {0}": "المدة: {0}",
+  "Video Call": "مكالمة فيديو",
+  "Audio Call": "مكالمة صوتية",
   "language": {
     "english": "الإنجليزية",
     "arabic": "العربية"
@@ -44,7 +58,17 @@
     "and": "و",
     "send": "إرسال",
     "retry": "إعادة المحاولة",
-    "clear": "حذف التصفية"
+    "clear": "حذف التصفية",
+    "today": "اليوم",
+    "all": "الكل",
+    "active": "نشط",
+    "completed": "مكتمل",
+    "paid": "مدفوع",
+    "urgent": "عاجل",
+    "unread": "غير مقروء",
+    "this_week": "هذا الأسبوع",
+    "missed": "فائت",
+    "rejected": "مرفوض"
   },
   "help_support": {
     "title": "المساعدة والدعم",
@@ -487,5 +511,21 @@
     "home": "الرئيسية",
     "video_call": "مكالمة فيديو",
     "audio_call": "مكالمة صوتية"
+  },
+  "consultations": {
+    "title": "الاستشارات",
+    "search_consultations": "بحث الاستشارات",
+    "no_consultations_found": "لم يتم العثور على استشارات"
+  },
+  "calls": {
+    "title": "المكالمات",
+    "call_history": "سجل المكالمات",
+    "search_calls": "بحث المكالمات",
+    "no_calls_found": "لم يتم العثور على مكالمات",
+    "new_calls_will_appear_here": "ستظهر المكالمات الجديدة هنا"
+  },
+  "analytics": {
+    "title": "التحليلات",
+    "search_users": "بحث المستخدمين"
   }
 } 

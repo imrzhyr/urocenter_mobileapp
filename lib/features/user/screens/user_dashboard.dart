@@ -17,17 +17,19 @@ import '../../../core/widgets/animated_gradient_card_background.dart';
 import '../../../core/utils/haptic_utils.dart';
 import '../../../core/widgets/animated_gradient_top_border.dart';
 import '../../../core/services/call_service.dart';
-import '../../../core/widgets/incoming_call_widget.dart';
-import 'package:urocenter/core/utils/logger.dart';
 import '../../../core/widgets/app_bar_style2.dart';
 import '../../../core/widgets/navigation_bar_style2.dart';
+import 'package:urocenter/core/utils/logger.dart';
+import '../../../features/chat/models/call_params.dart';
 
 // Import the full screen components
 import './user_home_screen.dart';
 
 /// Main dashboard for regular users
 class UserDashboard extends ConsumerStatefulWidget {
-  const UserDashboard({super.key});
+  final Map<String, dynamic>? extraData;
+
+  const UserDashboard({super.key, this.extraData});
 
   @override
   ConsumerState<UserDashboard> createState() => _UserDashboardState();
@@ -45,6 +47,8 @@ class _UserDashboardState extends ConsumerState<UserDashboard> {
   bool _isLoadingDrKamalChat = true; // Start loading initially
   StreamSubscription? _drKamalChatSubscription;
   final String _drKamalUid = 'A7qj5kfk1sPuv11Q3DJdY2UmTur1'; // Store Dr. Kamal's UID
+  // --- Active Call State ---
+  Map<String, dynamic>? _activeCallParams;
   // --- END State Variables ---
   
   @override
@@ -53,7 +57,16 @@ class _UserDashboardState extends ConsumerState<UserDashboard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
       _startCallListener();
+      _checkForActiveCall();
     });
+  }
+
+  void _checkForActiveCall() {
+    if (widget.extraData != null && widget.extraData!.containsKey('activeCall')) {
+      setState(() {
+        _activeCallParams = widget.extraData!['activeCall'] as Map<String, dynamic>?;
+      });
+    }
   }
 
   // --- Updated Data Loading Methods ---
@@ -198,34 +211,29 @@ class _UserDashboardState extends ConsumerState<UserDashboard> {
      }
   }
   
+  void _returnToActiveCall() {
+    if (_activeCallParams != null) {
+      HapticUtils.mediumTap();
+      context.pushNamed(
+        RouteNames.callScreen,
+        extra: _activeCallParams,
+      );
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
-    final incomingCall = ref.watch(incomingCallProvider);
     final theme = Theme.of(context);
     
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         bottom: false,
-        child: Stack(
-          children: [
-            // Main content with tabs
-            IndexedStack(
-              index: _selectedIndex,
-              children: const [
-                UserHomeScreen(),
-                UserCallScreen(),
-              ],
-            ),
-            
-            // Incoming call overlay
-            if (incomingCall != null)
-              Positioned(
-                bottom: 80,
-                left: 16,
-                right: 16,
-                child: IncomingCallWidget(incomingCall: incomingCall),
-              ),
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: const [
+            UserHomeScreen(),
+            UserCallScreen(),
           ],
         ),
       ),

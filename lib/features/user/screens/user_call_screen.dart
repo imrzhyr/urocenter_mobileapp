@@ -57,11 +57,11 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     
     // Define filter options
     final List<FilterOption> filterOptions = [
-      FilterOption(value: 'all', label: 'chat.all_calls'.tr()),
-      FilterOption(value: 'completed', label: 'chat.completed_calls'.tr()),
-      FilterOption(value: 'missed', label: 'chat.missed_calls'.tr()),
-      FilterOption(value: 'rejected', label: 'chat.rejected_calls'.tr()),
-      FilterOption(value: 'today', label: 'chat.today_calls'.tr()),
+      FilterOption(value: 'all', label: 'All'.tr()),
+      FilterOption(value: 'completed', label: 'Completed'.tr()),
+      FilterOption(value: 'missed', label: 'Missed'.tr()),
+      FilterOption(value: 'rejected', label: 'Rejected'.tr()),
+      FilterOption(value: 'today', label: 'Today'.tr()),
     ];
     
     return Scaffold(
@@ -69,7 +69,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight + 70), // Increase height to accommodate search and filters
         child: AppBarStyle2(
-          title: 'chat.call_history'.tr(),
+          title: 'Call History'.tr(),
           showSearch: true,
           showFilters: true,
           filtersExpanded: _showFilters,
@@ -79,7 +79,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
           filterOptions: filterOptions,
           selectedFilter: _selectedFilter,
           onFilterSelected: _applyFilter,
-          searchHint: 'chat.search_calls'.tr(),
+          searchHint: 'Search calls'.tr(),
         ),
       ),
       body: Column(
@@ -87,7 +87,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
           // Call history list
           Expanded(
             child: callHistoryAsync.when(
-              data: (calls) => _buildCallsList(calls),
+              data: (calls) => _buildCallsList(calls.map((call) => call.toMap()).toList()),
               loading: () => const ShimmerLoadingListStyle2(
                 itemCount: 10,
                 itemHeight: 90,
@@ -95,7 +95,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
               ),
               error: (error, stack) => EmptyStateStyle2(
                 icon: Icons.error_outline,
-                message: 'Error loading calls',
+                message: 'Error loading calls'.tr(),
                 suggestion: error.toString(),
                 buttonText: 'common.try_again'.tr(),
                 buttonIcon: Icons.refresh,
@@ -112,54 +112,25 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
   }
   
   Widget _buildCallsList(List<Map<String, dynamic>> calls) {
-    // Filter calls based on search query
-    var filteredCalls = calls;
+    final theme = Theme.of(context);
     
-    if (_searchQuery.isNotEmpty) {
-      filteredCalls = calls.where((call) {
-        final callerName = call['callerName'] as String;
-        final calleeName = call['calleeName'] as String;
-        final searchLower = _searchQuery.toLowerCase();
-        return callerName.toLowerCase().contains(searchLower) || 
-               calleeName.toLowerCase().contains(searchLower);
-      }).toList();
-    }
-    
-    // Apply filters
-    if (_selectedFilter != 'all') {
-      if (_selectedFilter == 'completed') {
-        filteredCalls = filteredCalls.where((call) => call['status'] == 'completed').toList();
-      } else if (_selectedFilter == 'missed') {
-        filteredCalls = filteredCalls.where((call) => 
-            call['status'] == 'missed' || call['status'] == 'no_answer').toList();
-      } else if (_selectedFilter == 'rejected') {
-        filteredCalls = filteredCalls.where((call) => call['status'] == 'rejected').toList();
-      } else if (_selectedFilter == 'today') {
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
-        filteredCalls = filteredCalls.where((call) {
-          final callTime = call['startTime'] as DateTime;
-          final callDate = DateTime(callTime.year, callTime.month, callTime.day);
-          return callDate.isAtSameMomentAs(today);
-        }).toList();
-      }
-    }
+    // Filter calls based on search query and selected filter
+    final filteredCalls = _filterCalls(calls);
     
     if (filteredCalls.isEmpty) {
       return EmptyStateStyle2(
-        icon: Icons.call_end_rounded,
-        message: 'chat.no_calls_found'.tr(),
+        icon: Icons.phone_missed,
+        message: 'No calls found'.tr(),
         suggestion: _searchQuery.isNotEmpty || _selectedFilter != 'all'
-            ? 'common.try_again'.tr()
-            : 'chat.new_calls_will_appear'.tr(),
+            ? 'Try Again'.tr()
+            : 'New calls will appear here'.tr(),
         buttonText: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? 'common.clear'.tr() : null,
-        buttonIcon: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? Icons.clear : null,
+        buttonIcon: Icons.filter_alt_off,
         onButtonPressed: _searchQuery.isNotEmpty || _selectedFilter != 'all' ? () {
-          _searchController.clear();
           setState(() {
             _searchQuery = '';
             _selectedFilter = 'all';
-            _showFilters = false;
+            _searchController.clear();
           });
         } : null,
       );
@@ -214,7 +185,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
         ),
         const SizedBox(width: 8),
         Text(
-          'Duration: $callDuration',
+          'Duration: $callDuration'.tr(),
           style: TextStyle(
             color: theme.colorScheme.onSurfaceVariant,
             fontSize: 13,
@@ -228,7 +199,7 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     return ChatListItemStyle2(
       name: nameParts,
       lastMessage: formattedTime,
-      timeString: callType == 'video' ? 'chat.video_call'.tr() : 'chat.audio_call'.tr(),
+      timeString: callType == 'video' ? 'Video Call'.tr() : 'Audio Call'.tr(),
       status: callStatus,
       additionalInfo: additionalWidget,
       onTap: () {
@@ -246,5 +217,43 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     } else {
       return '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
     }
+  }
+
+  // Filter calls based on search query and selected filter
+  List<Map<String, dynamic>> _filterCalls(List<Map<String, dynamic>> calls) {
+    var filteredCalls = calls;
+    
+    // Apply search filter
+    if (_searchQuery.isNotEmpty) {
+      filteredCalls = calls.where((call) {
+        final callerName = call['callerName'] as String;
+        final calleeName = call['calleeName'] as String;
+        final searchLower = _searchQuery.toLowerCase();
+        return callerName.toLowerCase().contains(searchLower) || 
+              calleeName.toLowerCase().contains(searchLower);
+      }).toList();
+    }
+    
+    // Apply status/time filters
+    if (_selectedFilter != 'all') {
+      if (_selectedFilter == 'completed') {
+        filteredCalls = filteredCalls.where((call) => call['status'] == 'completed').toList();
+      } else if (_selectedFilter == 'missed') {
+        filteredCalls = filteredCalls.where((call) => 
+            call['status'] == 'missed' || call['status'] == 'no_answer').toList();
+      } else if (_selectedFilter == 'rejected') {
+        filteredCalls = filteredCalls.where((call) => call['status'] == 'rejected').toList();
+      } else if (_selectedFilter == 'today') {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        filteredCalls = filteredCalls.where((call) {
+          final callTime = call['startTime'] as DateTime;
+          final callDate = DateTime(callTime.year, callTime.month, callTime.day);
+          return callDate.isAtSameMomentAs(today);
+        }).toList();
+      }
+    }
+    
+    return filteredCalls;
   }
 } 

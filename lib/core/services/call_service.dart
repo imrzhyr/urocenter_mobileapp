@@ -1,50 +1,31 @@
 import 'dart:async';
-import 'package:urocenter/core/utils/logger.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Import Riverpod
-import 'package:urocenter/services/chat_service.dart'; // Import ChatService
-import 'package:urocenter/providers/service_providers.dart'; // Import service_providers for chatServiceProvider
-import 'package:urocenter/core/models/user_model.dart' as UserModel; // Import UserModel with namespace
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:urocenter/core/utils/logger.dart';
+import 'package:urocenter/providers/service_providers.dart';
 
 // Data class to hold incoming call information
 class IncomingCall {
-  /// The ID of the call
   final String callId;
-  
-  /// The ID of the caller
   final String callerId;
-  
-  /// The name of the caller to display
   final String callerName;
-  
-  /// The type of call (audio/video)
   final String type;
   
-  /// Constructor
   IncomingCall({
     required this.callId,
     required this.callerId,
     required this.callerName,
-    this.type = 'audio', // Default to audio call
+    this.type = 'audio',
   });
 }
 
 // StateNotifier for managing incoming call state
 class IncomingCallNotifier extends StateNotifier<IncomingCall?> {
-  // Initialize with no incoming call (null state)
-  IncomingCallNotifier() : super(null); 
-
-  // Method to set the incoming call
-  void setIncomingCall(IncomingCall? call) {
-    state = call;
-  }
-
-  // Method to clear the incoming call (e.g., when answered or rejected)
-  void clearIncomingCall() {
-    state = null;
-  }
+  IncomingCallNotifier() : super(null);
+  
+  void setIncomingCall(IncomingCall? call) => state = call;
+  void clearIncomingCall() => state = null;
 }
 
 // Provider for the IncomingCallNotifier
@@ -52,159 +33,143 @@ final incomingCallProvider = StateNotifierProvider<IncomingCallNotifier, Incomin
   return IncomingCallNotifier();
 });
 
-
 class CallService {
   final FirebaseFirestore _firestore;
-  final Ref _ref; 
+  final Ref _ref;
 
-  // Listener subscription - needs to be managed
-  StreamSubscription? _callSubscription;
-  // Track calls that are currently being processed to prevent duplicates
+  // Track active operations to prevent duplicates
   final Set<String> _activeCallUpdates = {};
   final Set<String> _messageCreationInProgress = {};
+  
+  // Call subscription
+  StreamSubscription? _callSubscription;
 
   CallService(this._firestore, this._ref);
 
-  // Method to start listening for calls
+  // Method to get the current status of a call from Firestore
+  Future<String?> getCallStatus(String callId) async {
+    try {
+      final doc = await _firestore.collection('calls').doc(callId).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data()!['status'] as String?;
+      }
+      return null; // Call document doesn't exist or has no data
+    } catch (e) {
+      AppLogger.e("[CallService] Error getting call status for $callId: $e");
+      return null; // Return null on error
+    }
+  }
+
+  // Listen for incoming calls for a specific user
   void listenForIncomingCalls(String userId) {
     AppLogger.d("[CallService] Starting listener for incoming calls for user: $userId");
     
     // Cancel any previous subscription
-    _callSubscription?.cancel(); 
+    _callSubscription?.cancel();
 
-    final callsRef = _firestore.collection('calls');
-    
-    _callSubscription = callsRef
-        .where('calleeId', isEqualTo: userId)
-        .where('status', isEqualTo: 'ringing') // Listen specifically for 'ringing' status
-        .snapshots()
-        .listen((snapshot) async { // Make this callback async
-      AppLogger.d("[CallService] Listener update for user $userId: ${snapshot.docs.length} ringing calls found");
-      
-      if (snapshot.docs.isNotEmpty) {
-        // Usually, there should only be one active incoming call, take the first
-        final callDoc = snapshot.docs.first;
-        final callData = callDoc.data();
-        
-        AppLogger.d("[CallService] Processing incoming call data: $callData");
-        
-        // Make sure we get a valid caller name from the callData
-        String callerName = callData['callerName'] ?? '';
-        String callerId = callData['callerId'] ?? '';
-        
-        if (callerName.isEmpty && callerId.isNotEmpty) {
-          // Try to get caller name from user profile using a proper way
-          AppLogger.d("[CallService] Missing caller name, fetching from user profile for callerId: $callerId");
-          try {
-            // Get user doc directly for the caller
-            final userDoc = await _firestore.collection('users').doc(callerId).get();
-            
-            if (userDoc.exists && userDoc.data() != null) {
-              final userData = userDoc.data()!;
-              
-              // Try different possible name fields
-              final name = userData['fullName'] ?? userData['name'] ?? userData['displayName'];
-              
-              if (name is String && name.isNotEmpty) {
-                callerName = name;
-                
-                // Add "Dr." prefix for admin users if needed
-                if (userData['isAdmin'] == true || userData['role'] == 'admin') {
-                  // Always use Dr. Ali Kamal for admin users
-                  callerName = "Dr. Ali Kamal";
-                  AppLogger.d("[CallService] Using fixed admin name: Dr. Ali Kamal");
-                }
-                
-                AppLogger.d("[CallService] Successfully retrieved caller name: $callerName");
-                
-                // Update the call document with the correct name
-                await _firestore.collection('calls').doc(callDoc.id).update({
-                  'callerName': callerName
-                });
-              }
-            }
-          } catch (e) {
-            AppLogger.e("[CallService] Error fetching caller profile: $e");
+    _callSubscription = _firestore.collection('calls')
+      .where('calleeId', isEqualTo: userId)
+      .where('status', isEqualTo: 'ringing')
+      .snapshots()
+      .listen((snapshot) async {
+        // Process call documents that are ringing
+        if (snapshot.docs.isNotEmpty) {
+          final callDoc = snapshot.docs.first;
+          final callData = callDoc.data();
+          
+          // Skip if call data is invalid
+          if (callData['callerId'] == null) {
+            AppLogger.callWarning("[CallService] Invalid call document found: ${callDoc.id}, missing callerId");
+            return;
           }
-        }
-        
-        // If still empty after trying to fetch, use fallback
-        if (callerName.isEmpty) {
-          callerName = 'Unknown Caller';
-          AppLogger.w("[CallService] Still missing caller name for call ${callDoc.id}, using fallback name.");
-        }
+          
+          // Extract data from the call document
+          String callerName = callData['callerName'] ?? '';
+          final callerId = callData['callerId'] as String;
+          
+          // If caller name not set, fetch it from the users collection
+          if (callerName.isEmpty) {
+            try {
+              final userDoc = await _firestore.collection('users').doc(callerId).get();
+              
+              if (userDoc.exists && userDoc.data() != null) {
+                final userData = userDoc.data()!;
+                
+                // Try different name fields
+                final name = userData['fullName'] ?? userData['name'] ?? userData['displayName'];
+                
+                if (name is String && name.isNotEmpty) {
+                  callerName = name;
+                  
+                  // Add "Dr." prefix for admin users
+                  if (userData['isAdmin'] == true || userData['role'] == 'admin') {
+                    callerName = "Dr. Ali Kamal";
+                  }
+                  
+                  // Update the call document with correct name
+                  await _firestore.collection('calls').doc(callDoc.id).update({
+                    'callerName': callerName
+                  });
+                }
+              }
+            } catch (e) {
+              AppLogger.e("[CallService] Error fetching caller profile: $e");
+            }
+          }
+          
+          // Use fallback name if still empty
+          if (callerName.isEmpty) {
+            callerName = 'Unknown Caller';
+          }
 
-        AppLogger.d("[CallService] Call from: $callerName (${callData['callerId']}), callData: ${callData.toString()}");
-
-        final incomingCall = IncomingCall(
-          callId: callDoc.id,
-          callerId: callData['callerId'] ?? '',
-          callerName: callerName,
-          type: callData['type'] ?? 'audio',
-        );
-        
-        // Update the global provider with the incoming call
-        _ref.read(incomingCallProvider.notifier).setIncomingCall(incomingCall);
-      } else {
-        // No ringing calls, clear the incoming call if any
-        _ref.read(incomingCallProvider.notifier).clearIncomingCall();
-      }
-    });
+          // Create and set incoming call
+          final incomingCall = IncomingCall(
+            callId: callDoc.id,
+            callerId: callerId,
+            callerName: callerName,
+            type: callData['type'] ?? 'audio',
+          );
+          
+          _ref.read(incomingCallProvider.notifier).setIncomingCall(incomingCall);
+        } else {
+          // No ringing calls, clear the incoming call
+          _ref.read(incomingCallProvider.notifier).clearIncomingCall();
+        }
+      });
   }
 
-  // Method to stop listening (e.g., on sign out)
+  // Stop listening for incoming calls
   void stopListening() {
-    AppLogger.d("[CallService] Stopping listener for incoming calls.");
+    AppLogger.d("[CallService] Stopping listener for incoming calls");
     _callSubscription?.cancel();
     _callSubscription = null;
-    // Clear state when stopping listener
     _ref.read(incomingCallProvider.notifier).clearIncomingCall();
-    // Clear tracking sets
     _activeCallUpdates.clear();
     _messageCreationInProgress.clear();
   }
 
-  // --- Call Actions ---
-
+  // Accept a call with SDP answer (for WebRTC implementation)
   Future<void> acceptCall(String callId, Map<String, dynamic> sdpAnswerMap) async {
     try {
-       AppLogger.d("[CallService] Accepting call: $callId");
-       // 1. Update call status in Firestore to 'answered'
-       await _firestore.collection('calls').doc(callId).update({
-          'status': 'answered',
-          'answer': sdpAnswerMap, 
-       });
-       AppLogger.d("[CallService] Call $callId status updated to answered.");
-       // 3. Clear the incomingCallProvider state
-       _ref.read(incomingCallProvider.notifier).clearIncomingCall();
+      AppLogger.d("[CallService] Accepting call: $callId");
+      await _firestore.collection('calls').doc(callId).update({
+        'status': 'answered',
+        'answer': sdpAnswerMap,
+      });
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
     } catch (e) {
-       AppLogger.e("[CallService] Error accepting call $callId: $e");
-       // Handle error if needed (e.g., show a message)
-       // Optionally clear the provider on error too
-       _ref.read(incomingCallProvider.notifier).clearIncomingCall();
+      AppLogger.e("[CallService] Error accepting call $callId: $e");
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
     }
   }
 
-  Future<void> rejectCall(String callId) async {
-    try {
-       AppLogger.d("[CallService] Rejecting call: $callId");
-       await _firestore.collection('calls').doc(callId).update({'status': 'rejected'});
-       AppLogger.d("[CallService] Call $callId status updated to rejected.");
-       // Notifier will be cleared automatically by the listener finding no 'ringing' calls
-       // Or clear explicitly:
-       _ref.read(incomingCallProvider.notifier).clearIncomingCall();
-    } catch (e) {
-       AppLogger.e("[CallService] Error rejecting call $callId: $e");
-       // Handle error if needed
-    }
-  }
-  
-  // Update call status in Firestore
+  // Update call status and handle duration calculation
   Future<void> updateCallStatus(String callId, String status) async {
-    // Guard against concurrent updates to the same call
-    final operationKey = "$callId:$status";
+    final operationKey = "$callId-$status";
+    
+    // Skip if already processing this update
     if (_activeCallUpdates.contains(operationKey)) {
-      AppLogger.d("[CallService] Update already in progress for call $callId to status: $status - skipping duplicate");
+      AppLogger.d("[CallService] Update for call $callId to status $status already in progress - skipping duplicate");
       return;
     }
     
@@ -212,7 +177,7 @@ class CallService {
       _activeCallUpdates.add(operationKey);
       AppLogger.d("[CallService] Updating call $callId to status: $status");
       
-      // Get the current call data
+      // Get current call document
       final callDoc = await _firestore.collection('calls').doc(callId).get();
       if (!callDoc.exists) {
         AppLogger.e("[CallService] Call document $callId does not exist");
@@ -222,100 +187,133 @@ class CallService {
       final callData = callDoc.data()!;
       final currentStatus = callData['status'] as String? ?? 'unknown';
       
-      // Don't update if the status is already at the target (except for 'completed' which can override 'ended')
+      // If we already have a 'completed' status, don't downgrade to 'ended'
+      if (currentStatus == 'completed' && status == 'ended') {
+        AppLogger.d("[CallService] Not downgrading status from 'completed' to 'ended' for call $callId");
+        return;
+      }
+      
+      // Special case for ringing calls that end - mark as missed instead
+      if (currentStatus == 'ringing' && status == 'ended') {
+        AppLogger.d("[CallService] Converting 'ended' to 'missed' for ringing call $callId");
+        status = 'missed';
+      }
+      
+      // Don't update if status is already set (except for completed which can override ended)
       if (currentStatus == status && !(currentStatus == 'ended' && status == 'completed')) {
         AppLogger.d("[CallService] Call $callId is already in status: $status - skipping update");
         return;
       }
       
-      // Get call start time from document - try both startTime and startTimeLocal
+      // Get call start time - single consistent approach
       DateTime? startTime;
       
-      // Try primary startTime first
+      // Try primary startTime first, then fallbacks
       if (callData['startTime'] != null && callData['startTime'] is Timestamp) {
         startTime = (callData['startTime'] as Timestamp).toDate();
-        AppLogger.d("[CallService] Using server startTime for call $callId");
-      } 
-      // Fall back to startTimeLocal if available
-      else if (callData['startTimeLocal'] != null && callData['startTimeLocal'] is Timestamp) {
+      } else if (callData['startTimeLocal'] != null && callData['startTimeLocal'] is Timestamp) {
         startTime = (callData['startTimeLocal'] as Timestamp).toDate();
-        AppLogger.d("[CallService] Using local startTime for call $callId");
-      }
-      // Fall back to createdAt if available
-      else if (callData['createdAt'] != null) {
+      } else if (callData['createdAt'] != null) {
         if (callData['createdAt'] is Timestamp) {
           startTime = (callData['createdAt'] as Timestamp).toDate();
         } else if (callData['createdAt'] is DateTime) {
           startTime = callData['createdAt'] as DateTime;
         }
-        AppLogger.d("[CallService] Using createdAt as startTime for call $callId");
       }
       
       // Current time for calculations
       final now = DateTime.now();
       
-      // Initialize update data with new status
-      Map<String, dynamic> updateData = {'status': status};
+      // Update data with new status
+      final updateData = <String, dynamic>{
+        'status': status,
+      };
       
-      // If there's no startTime, set it now to prevent issues with duration calculation
-      if (startTime == null) {
-        AppLogger.w("[CallService] Call $callId has no valid startTime, setting one now");
-        final timestamp = Timestamp.fromDate(now);
-        updateData['startTime'] = FieldValue.serverTimestamp();
-        updateData['startTimeLocal'] = timestamp;
-        // Use local time for immediate calculations in this function
-        startTime = now;
-      }
-      
-      // State transition logic
+      // State transition logic based on status
       switch (status) {
-        // RINGING: Initial outgoing call state
         case 'ringing':
           // Nothing special needed beyond status update
           break;
           
-        // ANSWERED: Call was accepted by the callee
         case 'answered':
           // If this is first transition to answered, record the answer time
           if (currentStatus != 'answered') {
             updateData['answerTime'] = FieldValue.serverTimestamp();
+            // Store a local answer time for immediate duration calculations
+            final answerTimestamp = Timestamp.fromDate(now);
+            updateData['answerTimeLocal'] = answerTimestamp;
           }
           break;
           
-        // COMPLETED: Call ended normally after being answered
         case 'completed':
           // Add end time
           updateData['endTime'] = FieldValue.serverTimestamp();
+          final endTimestamp = Timestamp.fromDate(now);
+          updateData['endTimeLocal'] = endTimestamp;
           
-          // Calculate duration if we have a valid start time
-          if (startTime != null) {
+          // Calculate duration correctly using answer time if available
+          DateTime? answerTime;
+          if (callData['answerTimeLocal'] != null && callData['answerTimeLocal'] is Timestamp) {
+            answerTime = (callData['answerTimeLocal'] as Timestamp).toDate();
+            AppLogger.d("[CallService] Using answerTimeLocal for duration calculation");
+          } else if (callData['answerTime'] != null && callData['answerTime'] is Timestamp) {
+            answerTime = (callData['answerTime'] as Timestamp).toDate();
+            AppLogger.d("[CallService] Using answerTime for duration calculation");
+          }
+          
+          // Use answer time for duration calculation if available
+          if (answerTime != null) {
+            final duration = now.difference(answerTime).inSeconds;
+            // Ensure duration is at least 1 second if the call was connected
+            updateData['duration'] = duration > 0 ? duration : 1;
+            AppLogger.d("[CallService] Call $callId completed with duration: ${updateData['duration']} seconds (using answer time)");
+          } else if (startTime != null) {
+            // Fall back to start time if answer time not available
             final duration = now.difference(startTime).inSeconds;
-            updateData['duration'] = duration;
-            AppLogger.d("[CallService] Call $callId completed with duration: $duration seconds");
+            // Ensure duration is at least 1 second if the call was connected
+            updateData['duration'] = duration > 0 ? duration : 1;
+            AppLogger.d("[CallService] Call $callId completed with duration: ${updateData['duration']} seconds (using start time)");
           } else {
-            // Fallback if startTime is missing
-            updateData['duration'] = 0;
-            AppLogger.w("[CallService] Call $callId completed but missing startTime");
+            // Fallback if startTime is missing - use 1 second minimum
+            updateData['duration'] = 1;
+            AppLogger.callWarning("[CallService] Call $callId completed but missing time references");
           }
           break;
           
-        // ENDED: Generic call end (might be hung up before being answered)
         case 'ended':
           // Add end time
           updateData['endTime'] = FieldValue.serverTimestamp();
+          final endTimestamp = Timestamp.fromDate(now);
+          updateData['endTimeLocal'] = endTimestamp;
           
           // If call was previously answered, mark as completed instead
           if (currentStatus == 'answered') {
             updateData['status'] = 'completed';
             AppLogger.d("[CallService] Converting 'ended' to 'completed' for answered call $callId");
             
-            // Calculate duration from start time
-            if (startTime != null) {
+            // Calculate duration using answer time if available
+            DateTime? answerTime;
+            if (callData['answerTimeLocal'] != null && callData['answerTimeLocal'] is Timestamp) {
+              answerTime = (callData['answerTimeLocal'] as Timestamp).toDate();
+            } else if (callData['answerTime'] != null && callData['answerTime'] is Timestamp) {
+              answerTime = (callData['answerTime'] as Timestamp).toDate();
+            }
+            
+            if (answerTime != null) {
+              final duration = now.difference(answerTime).inSeconds;
+              // Ensure duration is at least 1 second if the call was connected
+              updateData['duration'] = duration > 0 ? duration : 1;
+              AppLogger.d("[CallService] Call $callId ended with duration: ${updateData['duration']} seconds (using answer time)");
+            } else if (startTime != null) {
+              // Fall back to start time if answer time not available
               final duration = now.difference(startTime).inSeconds;
-              updateData['duration'] = duration;
-              AppLogger.d("[CallService] Call $callId ended with duration: $duration seconds");
+              // Ensure duration is at least 1 second if the call was connected
+              updateData['duration'] = duration > 0 ? duration : 1;
+              AppLogger.d("[CallService] Call $callId ended with duration: ${updateData['duration']} seconds (using start time)");
             } else {
-              updateData['duration'] = 0;
+              // Fallback if startTime is missing - use 1 second minimum
+              updateData['duration'] = 1;
+              AppLogger.callWarning("[CallService] Call $callId ended but missing time references");
             }
           } else {
             // For unanswered calls that ended, set a zero duration
@@ -323,14 +321,7 @@ class CallService {
           }
           break;
           
-        // REJECTED: Call was explicitly declined by recipient
         case 'rejected':
-          // Add end time and zero duration
-          updateData['endTime'] = FieldValue.serverTimestamp();
-          updateData['duration'] = 0;
-          break;
-          
-        // MISSED: Call was not answered (timed out)
         case 'missed':
         case 'no_answer':
           // Add end time and zero duration
@@ -338,9 +329,9 @@ class CallService {
           updateData['duration'] = 0;
           break;
           
-        // DEFAULT: Handle other status values
         default:
-          AppLogger.w("[CallService] Unhandled call status update: $status");
+          // Handle other status values
+          AppLogger.callWarning("[CallService] Unhandled call status update: $status");
           // If ending the call with any other status, add end time
           if (status.contains('end') || status.contains('fail')) {
             updateData['endTime'] = FieldValue.serverTimestamp();
@@ -348,106 +339,197 @@ class CallService {
             // Calculate duration if appropriate
             if (startTime != null && (currentStatus == 'answered' || currentStatus == 'connected')) {
               final duration = now.difference(startTime).inSeconds;
-              updateData['duration'] = duration;
+              // Ensure duration is at least 1 second if the call was connected
+              updateData['duration'] = duration > 0 ? duration : 1;
             } else {
               updateData['duration'] = 0;
             }
           }
       }
       
-      // Update the call document
+      // Update document with new status and duration if available
       await _firestore.collection('calls').doc(callId).update(updateData);
-      AppLogger.d("[CallService] Call $callId updated with data: $updateData");
       
-      // Create a chat message for completed, rejected, or missed calls
-      final finalStatus = updateData['status'] ?? status;
-      if (finalStatus == 'completed' || finalStatus == 'rejected' || 
-          finalStatus == 'missed' || finalStatus == 'no_answer' || 
-          finalStatus == 'ended') {
-        await _createCallEventMessage(callId, finalStatus, callData);
-      }
+      // Update call data with our new values for message creation
+      Map<String, dynamic> updatedCallData = Map<String, dynamic>.from(callData);
+      updateData.forEach((key, value) {
+        if (value is! FieldValue) { // Don't try to copy server timestamps
+          updatedCallData[key] = value;
+        }
+      });
+      
+      // Create system message in chat for the call event
+      await _createCallEventMessage(callId, updateData['status'] as String? ?? status, updatedCallData);
+      
     } catch (e) {
       AppLogger.e("[CallService] Error updating call status: $e");
     } finally {
-      // Always remove from active operations set when done
       _activeCallUpdates.remove(operationKey);
     }
   }
-  
-  // Create a message in chat for a call event
-  Future<void> _createCallEventMessage(String callId, String status, Map<String, dynamic>? callData) async {
-    // Guard against concurrent message creation for the same call
+
+  // Create system message in chat for call events
+  Future<void> _createCallEventMessage(String callId, String status, Map<String, dynamic> callData) async {
+    // Guard against concurrent message creation
     if (_messageCreationInProgress.contains(callId)) {
       AppLogger.d("[CallService] Message creation already in progress for call $callId - skipping duplicate");
+      return;
+    }
+
+    // Skip 'ended' status messages completely - only show completed and missed/rejected
+    if (status == 'ended') {
+      AppLogger.d("[CallService] Skipping 'ended' message creation - only showing completed and missed calls");
+      return;
+    }
+
+    // Only create messages for completed, missed, or rejected calls
+    final isFinalStatus = status == 'completed' || status == 'missed' || status == 'rejected' || status == 'no_answer';
+    if (!isFinalStatus) {
+      AppLogger.d("[CallService] Skipping message creation for non-final status: $status");
+      return;
+    }
+
+    // Additional guard to prevent creating too many call event messages in rapid succession
+    final lastMessageKey = "last_message_$callId";
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastMessageTime = callData[lastMessageKey] as int? ?? 0;
+    final timeSinceLastMessage = now - lastMessageTime;
+    
+    if (timeSinceLastMessage < 2000) {
+      AppLogger.d("[CallService] Suppressing rapid message creation for call $callId - last message was only ${timeSinceLastMessage}ms ago");
       return;
     }
     
     try {
       _messageCreationInProgress.add(callId);
-      Map<String, dynamic>? data = callData;
       
-      // If call data is null or missing critical fields, try to fetch it again
-      if (data == null || data['callerId'] == null || data['calleeId'] == null) {
-        AppLogger.d("[CallService] Call data missing or incomplete, fetching updated data for call $callId");
+      // Get fresh call data if needed
+      Map<String, dynamic> data = callData;
+      if (data['callerId'] == null || data['calleeId'] == null) {
         final callDoc = await _firestore.collection('calls').doc(callId).get();
         if (callDoc.exists) {
-          data = callDoc.data();
+          data = callDoc.data()!;
         } else {
           AppLogger.e("[CallService] Cannot create call event message - call document no longer exists");
           return;
         }
       }
       
-      if (data == null) {
-        AppLogger.e("[CallService] Cannot create call event message - no call data available");
+      // Extract call information
+      final callerId = data['callerId'] as String?;
+      final calleeId = data['calleeId'] as String?;
+      
+      if (callerId == null || calleeId == null) {
+        AppLogger.e("[CallService] Cannot create call event message - missing caller or callee ID");
         return;
       }
       
-      final callerId = data['callerId'] as String?;
-      final calleeId = data['calleeId'] as String?;
       final callerName = data['callerName'] as String? ?? 'Unknown Caller';
       final calleeName = data['calleeName'] as String? ?? 'Unknown Recipient';
       final callType = data['type'] as String? ?? 'audio';
-      final duration = data['duration'] as int?;
+      int? duration = data['duration'] as int?;
       final startTime = data['startTime'] as Timestamp?;
       final endTime = data['endTime'] as Timestamp?;
       
-      if (callerId == null || calleeId == null) {
-        AppLogger.e("[CallService] Cannot create call event message - missing caller or callee ID even after refetch");
-        return;
+      // Special handling for duration on connected calls
+      if ((status == 'completed' || (status == 'ended' && data['answerTime'] != null)) && 
+          (duration == null || duration == 0)) {
+        // If this was an answered call, make sure it has at least 1 second duration
+        duration = 1;
+        AppLogger.d("[CallService] Setting minimum duration of 1s for connected call $callId");
       }
       
-      // Generate chat ID from caller and callee IDs
+      // NEVER create 'ended' messages for calls that were ever connected
+      if (status == 'ended') {
+          // Check if there was an answer time (call was connected)
+          final wasConnected = data['answerTime'] != null || data['answerTimeLocal'] != null || (duration != null && duration > 0);
+          if (wasConnected) {
+              AppLogger.d("[CallService] Skipping 'ended' message creation for call that was connected");
+              return; // Skip creating any message
+          }
+      }
+      
+      // Check for very recent messages about the same call and status
+      final chatId = _generateChatId(callerId, calleeId);
+      
+      // Do a more thorough check for existing call messages (even older ones)
+      final existingMessages = await _firestore.collection('chats').doc(chatId).collection('messages')
+        .where('type', isEqualTo: 'call_event')
+        .where('metadata.callId', isEqualTo: callId)
+        .orderBy('createdAt', descending: true)
+        .limit(3)
+        .get();
+      
+      // If this call has any 'completed' messages already, don't create an 'ended' message
+      if (status == 'ended' && existingMessages.docs.isNotEmpty) {
+        for (final doc in existingMessages.docs) {
+          final msgData = doc.data();
+          if (msgData['metadata'] != null && 
+              (msgData['metadata']['status'] == 'completed' || 
+               (msgData['metadata']['duration'] != null && msgData['metadata']['duration'] > 0))) {
+            AppLogger.d("[CallService] Found existing completed message for call $callId - skipping 'ended' message");
+            return; // Skip creating message
+          }
+        }
+      }
+      
+      // Also check for very recent messages (to avoid rapid duplicate messages)
+      final recentMessages = await _checkForRecentCallMessage(chatId, callId, status);
+      if (recentMessages.isNotEmpty) {
+        // Only update the existing message if duration increased
+        final recentMessage = recentMessages.first;
+        final recentData = recentMessage.data() as Map<String, dynamic>?;
+        
+        // Safely access metadata with null checks
+        final metadata = recentData != null ? recentData['metadata'] as Map<String, dynamic>? : null;
+        final oldDuration = metadata != null ? metadata['duration'] as int? ?? 0 : 0;
+        
+        if (duration != null && duration > oldDuration && (status == 'completed' || status == 'ended')) {
+          // Update the existing message with new duration
+          await _firestore.collection('chats').doc(chatId).collection('messages').doc(recentMessage.id).update({
+            'metadata.duration': duration,
+            'metadata.endTime': endTime?.millisecondsSinceEpoch,
+          });
+          
+          AppLogger.d("[CallService] Updated existing call message ${recentMessage.id} with new duration: $duration seconds");
+          return; // Skip creating new message
+        } else if (!isFinalStatus) {
+          // Don't create duplicate message for non-final status
+          AppLogger.d("[CallService] Found recent message about call $callId with status $status - skipping duplicate");
+          return;
+        }
+      }
+      
+      // Generate chat ID
       List<String> participants = [callerId, calleeId];
       participants.sort(); // Ensure consistent chat ID generation
-      final chatId = participants.join('_');
       
-      // Construct appropriate message based on call status
+      // Construct message content based on call status
       String messageContent;
       if (status == 'completed') {
-        String durationText = 'Call ended';
-        if (duration != null) {
-          durationText = _formatCallDuration(duration);
-        }
-        messageContent = '$callType call | $durationText';
-      } else if (status == 'missed' || status == 'no_answer') {
-        messageContent = 'Missed $callType call';
-      } else if (status == 'rejected') {
-        messageContent = 'Declined $callType call';
-      } else if (status == 'ended') {
-        // For 'ended' calls, also show duration if available
-        String durationText = 'Call ended';
+        // Always show duration for completed calls
         if (duration != null && duration > 0) {
-          durationText = _formatCallDuration(duration);
+          String durationText = _formatCallDuration(duration);
           messageContent = '$callType call | $durationText';
         } else {
-          messageContent = '$callType call ended';
+          // Use minimum 1 second for completed calls
+          messageContent = '$callType call | Call duration: 1s';
+          duration = 1; // Ensure minimum duration
         }
+      } else if (status == 'missed' || status == 'no_answer') {
+        messageContent = 'Missed $callType call';
+        AppLogger.d("[CallService] Creating missed call message: $messageContent for call $callId");
+      } else if (status == 'rejected') {
+        messageContent = 'Declined $callType call';
       } else {
-        messageContent = '$callType call ended';
+        // This should never be reached due to the early returns above,
+        // but just in case, default to a completed call with 1s
+        AppLogger.d("[CallService] Using fallback message content for unexpected status: $status");
+        messageContent = '$callType call | Call duration: 1s';
+        duration = 1;
       }
       
-      // Get chat service and send system message
+      // Send system message
       final chatService = _ref.read(chatServiceProvider);
       await chatService.sendSystemMessage(
         chatId: chatId,
@@ -457,23 +539,57 @@ class CallService {
           'callId': callId,
           'callType': callType,
           'status': status,
-          'duration': duration,
+          'duration': duration ?? 0, // Ensure duration is never null in metadata
           'callerId': callerId,
           'calleeId': calleeId,
           'callerName': callerName,
           'calleeName': calleeName,
           'startTime': startTime?.millisecondsSinceEpoch,
           'endTime': endTime?.millisecondsSinceEpoch,
+          'messageCreatedAt': now, // Track when this message was created
         }
       );
       
-      AppLogger.d("[CallService] Created call event message in chat $chatId for call $callId");
+      // Update the timestamp in call data to prevent rapid message creation
+      await _firestore.collection('calls').doc(callId).update({
+        lastMessageKey: now,
+      });
+      
+      AppLogger.d("[CallService] Created call event message in chat $chatId for call $callId with status $status");
     } catch (e) {
       AppLogger.e("[CallService] Error creating call event message: $e");
     } finally {
-      // Always remove from in-progress set when done
       _messageCreationInProgress.remove(callId);
     }
+  }
+  
+  // Helper to check for recent call messages to avoid duplicates
+  Future<List<DocumentSnapshot>> _checkForRecentCallMessage(String chatId, String callId, String status) async {
+    try {
+      // Look for messages from the last minute about the same call
+      final lastMinute = DateTime.now().subtract(const Duration(minutes: 1));
+      final lastMinuteTimestamp = Timestamp.fromDate(lastMinute);
+      
+      final query = await _firestore.collection('chats').doc(chatId).collection('messages')
+        .where('type', isEqualTo: 'call_event')
+        .where('metadata.callId', isEqualTo: callId)
+        .where('createdAt', isGreaterThan: lastMinuteTimestamp)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
+        
+      return query.docs;
+    } catch (e) {
+      AppLogger.e("[CallService] Error checking for recent call messages: $e");
+      return [];
+    }
+  }
+  
+  // Generate chat ID consistently
+  String _generateChatId(String userId1, String userId2) {
+    List<String> ids = [userId1, userId2];
+    ids.sort(); // Sort to ensure consistent order
+    return ids.join('_');
   }
   
   // Format call duration for display
@@ -489,31 +605,39 @@ class CallService {
     }
   }
 
-  // Add ICE candidate for caller
-  Future<void> addCallerIceCandidate(String callId, Map<String, dynamic> candidate) async {
+  // Mark a call as missed (when caller hangs up before callee answers)
+  Future<void> markCallAsMissed(String callId) async {
     try {
-      AppLogger.d("[CallService] Adding caller ICE candidate for call $callId");
-      await _firestore
-          .collection('calls')
-          .doc(callId)
-          .collection('callerCandidates')
-          .add(candidate);
+      AppLogger.d("[CallService] Marking call as missed: $callId");
+      await updateCallStatus(callId, 'missed');
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
     } catch (e) {
-      AppLogger.e("[CallService] Error adding caller ICE candidate: $e");
+      AppLogger.e("[CallService] Error marking call as missed $callId: $e");
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
     }
   }
 
-  // Add ICE candidate for callee
-  Future<void> addCalleeIceCandidate(String callId, Map<String, dynamic> candidate) async {
+  // Reject an incoming call
+  Future<void> rejectCall(String callId) async {
     try {
-      AppLogger.d("[CallService] Adding callee ICE candidate for call $callId");
-      await _firestore
-          .collection('calls')
-          .doc(callId)
-          .collection('calleeCandidates')
-          .add(candidate);
+      AppLogger.d("[CallService] Rejecting call: $callId");
+      await updateCallStatus(callId, 'rejected');
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
     } catch (e) {
-      AppLogger.e("[CallService] Error adding callee ICE candidate: $e");
+      AppLogger.e("[CallService] Error rejecting call $callId: $e");
+      _ref.read(incomingCallProvider.notifier).clearIncomingCall();
+    }
+  }
+
+  // Get Agora token for joining a call channel
+  Future<String?> getAgoraToken(String channelName) async {
+    try {
+      // Example token generation - in production this would likely call a secure API
+      // For development, can return null to use tokenless mode if enabled in Agora console
+      return null;
+    } catch (e) {
+      AppLogger.e("[CallService] Error getting Agora token: $e");
+      return null;
     }
   }
 
@@ -522,65 +646,7 @@ class CallService {
     return _firestore.collection('calls').doc(callId).snapshots();
   }
 
-  // Get caller ICE candidates stream
-  Stream<QuerySnapshot> getCallerCandidatesStream(String callId) {
-    return _firestore
-        .collection('calls')
-        .doc(callId)
-        .collection('callerCandidates')
-        .snapshots();
-  }
-
-  // Get callee ICE candidates stream
-  Stream<QuerySnapshot> getCalleeCandidatesStream(String callId) {
-    return _firestore
-        .collection('calls')
-        .doc(callId)
-        .collection('calleeCandidates')
-        .snapshots();
-  }
-  
-  // Get Agora token from Firestore or server
-  Future<String?> getAgoraToken(String channelName) async {
-    try {
-      AppLogger.d("[CallService] Getting Agora token for channel: $channelName");
-      
-      // Check if there's a token in Firestore first
-      final tokenDoc = await _firestore
-          .collection('agora_tokens')
-          .doc(channelName)
-          .get();
-      
-      if (tokenDoc.exists && tokenDoc.data() != null) {
-        final tokenData = tokenDoc.data()!;
-        final token = tokenData['token'] as String?;
-        
-        if (token != null && token.isNotEmpty) {
-          AppLogger.d("[CallService] Found existing Agora token for channel");
-          return token;
-        }
-      }
-      
-      // If no token in Firestore, try to get it from your token server
-      // This is where you would typically make an API call to your token service
-      // For example:
-      // final response = await http.get(Uri.parse('https://your-token-server.com/token?channelName=$channelName'));
-      // if (response.statusCode == 200) {
-      //   final data = jsonDecode(response.body);
-      //   return data['token'];
-      // }
-      
-      // For development without a token server - use null which will fall back to empty string
-      AppLogger.w("[CallService] No token found or token server available for channel: $channelName");
-      return null;
-      
-    } catch (e) {
-      AppLogger.e("[CallService] Error getting Agora token: $e");
-      return null;
-    }
-  }
-
-  /// Start a new audio call and return the call ID.
+  // Start a new audio call
   Future<String?> startAudioCall({
     required String callerId,
     required String callerName,
@@ -590,13 +656,13 @@ class CallService {
     try {
       AppLogger.d("[CallService] Starting audio call from $callerId ($callerName) to $calleeId ($calleeName)");
       
-      // Validate inputs to prevent issues
+      // Validate inputs
       if (callerId.isEmpty || calleeId.isEmpty) {
         AppLogger.e("[CallService] Cannot start call with empty caller or callee ID");
         return null;
       }
       
-      // Create a new call document in Firestore
+      // Create call document
       final callDoc = _firestore.collection('calls').doc();
       final callId = callDoc.id;
       
@@ -604,30 +670,28 @@ class CallService {
       final now = DateTime.now();
       final timestamp = Timestamp.fromDate(now);
       
-      // Call data with explicit startTime (both as Timestamp and server timestamp)
+      // Call data with consistent timestamps
       final callData = {
         'callerId': callerId,
         'callerName': callerName,
         'calleeId': calleeId,
         'calleeName': calleeName,
-        'type': 'audio', // Always audio for now
-        'status': 'pending', // Initial status
-        'startTime': FieldValue.serverTimestamp(), // Server timestamp for consistency
-        'startTimeLocal': timestamp, // Explicit timestamp as backup for duration calculations
-        'createdAt': now, // Local timestamp for immediate use
-        'platform': 'mobile', // Add platform information
-        'offer': null, // Will be set later by WebRTC if needed
-        'duration': 0, // Initialize duration to 0
+        'type': 'audio',
+        'status': 'pending',
+        'startTime': FieldValue.serverTimestamp(),
+        'startTimeLocal': timestamp,
+        'createdAt': timestamp,
+        'platform': 'mobile',
+        'duration': 0,
       };
       
-      // Write to Firestore
+      // Create call document
       await callDoc.set(callData);
       AppLogger.d("[CallService] Call document created with ID: $callId");
       
-      // Update status to ringing after creation
+      // Update status to ringing
       await updateCallStatus(callId, 'ringing');
       
-      // Return the call ID
       return callId;
     } catch (e) {
       AppLogger.e("[CallService] Error starting audio call: $e");
@@ -636,7 +700,7 @@ class CallService {
   }
 }
 
-// Provider for the CallService itself
+// Provider for the CallService
 final callServiceProvider = Provider<CallService>((ref) {
   final firestore = FirebaseFirestore.instance;
   return CallService(firestore, ref);

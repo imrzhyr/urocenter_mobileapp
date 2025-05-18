@@ -28,13 +28,13 @@ class UserDetailsScreen extends StatelessWidget {
     Color statusColor;
     
     if (hasPaid) {
-      userStatus = 'Paid'.tr();
+      userStatus = 'common.paid'.tr();
       statusColor = isDarkMode ? AppColors.successDarkTheme : AppColors.success;
     } else if (hasCompletedOnboarding) {
-      userStatus = 'Active'.tr();
+      userStatus = 'common.active'.tr();
       statusColor = isDarkMode ? AppColors.warningDarkTheme : AppColors.warning;
     } else {
-      userStatus = 'New'.tr();
+      userStatus = 'admin.new'.tr();
       statusColor = isDarkMode ? AppColors.primaryDarkTheme : theme.colorScheme.primary;
     }
     
@@ -123,7 +123,7 @@ class UserDetailsScreen extends StatelessWidget {
               _buildInfoItem(
                 context,
                 'Account Status'.tr(),
-                'Active'.tr(),
+                'common.active'.tr(),
                 Icons.verified_user_outlined,
                 textColor: statusColor,
               ),

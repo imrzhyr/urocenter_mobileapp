@@ -8,6 +8,7 @@ import 'package:urocenter/providers/theme_provider.dart';
 import 'package:logger/logger.dart';
 import 'package:urocenter/core/utils/logger.dart';
 import 'package:urocenter/providers/in_app_notification_provider.dart'; // Import the new provider
+import 'package:urocenter/core/utils/custom_asset_loader.dart'; // Import custom asset loader
 
 import 'firebase_options.dart';
 import 'app/app.dart';
@@ -73,6 +74,9 @@ Future<void> main() async {
       supportedLocales: const [Locale('en', 'US'), Locale('ar', 'SA')],
       path: 'assets/translations', 
       fallbackLocale: const Locale('en', 'US'),
+      useOnlyLangCode: false,
+      useFallbackTranslations: true,
+      assetLoader: CustomAssetLoader(),
       child: ProviderScope( // ProviderScope now uses overrides
         overrides: [
           localeOverride,
