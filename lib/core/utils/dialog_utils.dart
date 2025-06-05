@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../theme/theme.dart';
+import 'haptic_utils.dart';
 
 /// Utility class for displaying dialogs with consistent styling
 class DialogUtils {
@@ -28,7 +29,10 @@ class DialogUtils {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: () {
+                  HapticUtils.lightTap();
+                  Navigator.of(context).pop(false);
+                },
                 child: Text(
                   cancelText.tr(),
                   style: theme.textButtonTheme.style?.textStyle?.resolve({})?.copyWith(
@@ -37,7 +41,10 @@ class DialogUtils {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () {
+                  HapticUtils.mediumTap();
+                  Navigator.of(context).pop(true);
+                },
                 child: Text(
                   confirmText.tr(),
                   style: theme.textButtonTheme.style?.textStyle?.resolve({})?.copyWith(
@@ -75,7 +82,10 @@ class DialogUtils {
         actions: [
           Center(
             child: TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                HapticUtils.lightTap();
+                Navigator.of(context).pop();
+              },
               child: Text(
                 buttonText.tr(),
                 style: theme.textButtonTheme.style?.textStyle?.resolve({})?.copyWith(

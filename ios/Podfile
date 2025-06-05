@@ -70,6 +70,10 @@ post_install do |installer|
       
       # Disable bitcode as it's no longer maintained by Apple
       config.build_settings['ENABLE_BITCODE'] = 'NO'
+      
+      # Remove macOS and Mac Catalyst architectures to speed up builds
+      config.build_settings['EXCLUDED_ARCHS[sdk=macosx*]'] = 'arm64 x86_64'
+      config.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos iphonesimulator'
 
       # --- Add Permission Handler Macros ---
       # Ensures native code for specific permissions is compiled.

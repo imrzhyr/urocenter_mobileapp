@@ -168,6 +168,15 @@ class AdminDashboardState extends ConsumerState<AdminDashboard> with SingleTicke
         items: navigationItems,
         onItemSelected: _onTabSelected,
       ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.primary,
+        onPressed: () {
+          HapticUtils.lightTap();
+          // TODO: Show add user dialog/screen
+        },
+        heroTag: 'user_fab',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
@@ -352,6 +361,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> with SingleTickerPr
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         onPressed: () {
+          HapticUtils.lightTap();
           // TODO: Show add user dialog/screen
         },
         heroTag: 'user_fab',

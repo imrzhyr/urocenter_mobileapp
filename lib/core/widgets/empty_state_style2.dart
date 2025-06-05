@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import '../utils/haptic_utils.dart';
 
 /// A reusable empty state widget with consistent styling.
 ///
@@ -74,7 +75,10 @@ class EmptyStateStyle2 extends StatelessWidget {
             if (buttonText != null && onButtonPressed != null) ...[
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: onButtonPressed,
+                onPressed: () {
+                  HapticUtils.lightTap();
+                  onButtonPressed!();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: theme.colorScheme.onPrimary,

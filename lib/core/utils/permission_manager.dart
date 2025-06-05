@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import 'haptic_utils.dart';
 
 /// Utility class to handle app permissions
 class PermissionManager {
@@ -59,11 +60,17 @@ class PermissionManager {
             content: Text('permissions.microphone_required_message'.tr()),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () {
+                  HapticUtils.lightTap();
+                  Navigator.pop(context, false);
+                },
                 child: Text('permissions.not_now'.tr()),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () {
+                  HapticUtils.mediumTap();
+                  Navigator.pop(context, true);
+                },
                 child: Text('permissions.open_settings'.tr()),
               ),
             ],
@@ -104,11 +111,17 @@ class PermissionManager {
             content: Text('permissions.photos_required_message'.tr()),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () {
+                  HapticUtils.lightTap();
+                  Navigator.pop(context, false);
+                },
                 child: Text('permissions.not_now'.tr()),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () {
+                  HapticUtils.mediumTap();
+                  Navigator.pop(context, true);
+                },
                 child: Text('permissions.open_settings'.tr()),
               ),
             ],

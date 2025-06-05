@@ -9,6 +9,7 @@ import 'package:logger/logger.dart';
 import 'package:urocenter/core/utils/logger.dart';
 import 'package:urocenter/providers/in_app_notification_provider.dart'; // Import the new provider
 import 'package:urocenter/core/utils/custom_asset_loader.dart'; // Import custom asset loader
+import 'package:urocenter/core/utils/directory_initializer.dart'; // Import directory initializer
 
 import 'firebase_options.dart';
 import 'app/app.dart';
@@ -37,6 +38,9 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  // Initialize app directories
+  await DirectoryInitializer.initializeAppDirectories();
   
   // Initialize providers that need async setup (like SharedPreferences)
   final localeOverride = await initLocaleProvider();

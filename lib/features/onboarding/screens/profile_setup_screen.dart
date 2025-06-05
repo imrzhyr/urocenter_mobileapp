@@ -11,6 +11,7 @@ import 'package:easy_localization/easy_localization.dart'; // Import for transla
 import '../../../core/theme/theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../core/utils/utils.dart';
+import '../../../core/utils/haptic_utils.dart';
 import '../../../app/routes.dart';
 import '../widgets/onboarding_progress.dart';
 import '../../../core/widgets/app_scaffold.dart';
@@ -19,8 +20,10 @@ import '../providers/onboarding_providers.dart';
 import '../../../providers/service_providers.dart'; // Import service providers
 import '../../../core/data/countries_cities.dart'; // Import country/city data
 import '../../../core/constants/app_constants.dart'; // Import for onboarding steps constants
-import '../../../core/utils/haptic_utils.dart'; // Import Haptic Feedback
-import 'package:urocenter/core/utils/logger.dart';
+import '../../../core/utils/logger.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import '../../../core/models/models.dart';
 
 /// Profile setup screen for onboarding
 class ProfileSetupScreen extends ConsumerStatefulWidget {
@@ -174,7 +177,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> with Ti
       _selectedGender = gender;
     });
     _updateButtonState(); // Update button state
-    HapticFeedback.mediumImpact();
+    HapticUtils.mediumTap();
     FocusScope.of(context).unfocus();
   }
   
@@ -605,7 +608,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> with Ti
                                       }).toList(),
                                       onChanged: (String? value) {
                                         if (value != null && value != _selectedCountry) {
-                                          HapticFeedback.selectionClick();
+                                          HapticUtils.selection();
                                           setState(() {
                                             _selectedCountry = value;
                                             _selectedCity = null; // Reset city when country changes
@@ -688,7 +691,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> with Ti
                                       }).toList(),
                                       onChanged: _selectedCountry == null ? null : (String? value) {
                                         if (value != null) {
-                                          HapticFeedback.selectionClick();
+                                          HapticUtils.selection();
                                           setState(() {
                                             _selectedCity = value;
                                           });

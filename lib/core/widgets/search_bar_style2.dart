@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../theme/app_colors.dart';
+import '../utils/haptic_utils.dart';
 
 /// A reusable search bar component with enhanced styling.
 ///
@@ -83,6 +84,7 @@ class SearchBarStyle2 extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                   onPressed: () {
+                    HapticUtils.lightTap();
                     controller?.clear();
                     onChanged?.call('');
                   },
@@ -95,7 +97,10 @@ class SearchBarStyle2 extends StatelessWidget {
                         ? theme.colorScheme.primary 
                         : theme.colorScheme.onSurfaceVariant,
                   ),
-                  onPressed: onFilterToggle,
+                  onPressed: () {
+                    HapticUtils.lightTap();
+                    onFilterToggle?.call();
+                  },
                 ),
             ],
           ),

@@ -483,7 +483,10 @@ class _DocumentManagementScreenState extends ConsumerState<DocumentManagementScr
               Text(_error!, style: const TextStyle(color: AppColors.error), textAlign: TextAlign.center),
               const SizedBox(height: 16),
               ElevatedButton( // Add a retry button
-                onPressed: _loadDocuments,
+                onPressed: () {
+                  HapticUtils.lightTap();
+                  _loadDocuments();
+                },
                 child: Text('common.retry'.tr()), // Localized
               ),
             ],
@@ -636,8 +639,11 @@ class _DocumentManagementScreenState extends ConsumerState<DocumentManagementScr
                     child: IconButton(
                       padding: EdgeInsets.zero,
                       icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
-          tooltip: 'documents.delete_document'.tr(), // Localized
-          onPressed: () => _deleteDocument(docId),
+                      tooltip: 'documents.delete_document'.tr(), // Localized
+                      onPressed: () {
+                        HapticUtils.lightTap();
+                        _deleteDocument(docId);
+                      },
                       splashRadius: 18,
                     ),
                   ),

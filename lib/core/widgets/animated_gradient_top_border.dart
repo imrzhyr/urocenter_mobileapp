@@ -8,7 +8,7 @@ class AnimatedGradientTopBorder extends StatefulWidget {
   const AnimatedGradientTopBorder({
     super.key,
     this.height = 3.0, // Subtle height for the border
-    this.duration = const Duration(seconds: 2), // Speed of one animation cycle
+    this.duration = const Duration(seconds: 1), // Speed of one animation cycle
   });
 
   @override

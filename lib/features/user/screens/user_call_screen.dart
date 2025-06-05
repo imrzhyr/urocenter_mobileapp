@@ -66,21 +66,18 @@ class _UserCallScreenState extends ConsumerState<UserCallScreen> {
     
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight + 70), // Increase height to accommodate search and filters
-        child: AppBarStyle2(
-          title: 'Call History'.tr(),
-          showSearch: true,
-          showFilters: true,
-          filtersExpanded: _showFilters,
-          searchController: _searchController,
-          onSearchChanged: _onSearch,
-          onFilterToggle: _toggleFilters,
-          filterOptions: filterOptions,
-          selectedFilter: _selectedFilter,
-          onFilterSelected: _applyFilter,
-          searchHint: 'Search calls'.tr(),
-        ),
+      appBar: AppBarStyle2(
+        title: 'Call History'.tr(),
+        showSearch: true,
+        showFilters: true,
+        filtersExpanded: _showFilters,
+        searchController: _searchController,
+        onSearchChanged: _onSearch,
+        onFilterToggle: _toggleFilters,
+        filterOptions: filterOptions,
+        selectedFilter: _selectedFilter,
+        onFilterSelected: _applyFilter,
+        searchHint: 'Search calls'.tr(),
       ),
       body: Column(
         children: [

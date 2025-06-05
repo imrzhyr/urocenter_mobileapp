@@ -177,6 +177,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              HapticUtils.lightTap();
               Navigator.pop(context); // Close dialog
               context.pop(); // Go back to previous screen
             },

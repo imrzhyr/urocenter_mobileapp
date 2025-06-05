@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import 'package:urocenter/core/utils/haptic_utils.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final dynamic extraData;
@@ -116,7 +117,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         label: Text("Page ${currentPage! + 1}/$pages"),
         icon: const Icon(Icons.navigate_next),
         onPressed: () {
-           _pdfController?.setPage(currentPage! + 1);
+          HapticUtils.lightTap();
+          _pdfController?.setPage(currentPage! + 1);
         },
       ) : null,
     );

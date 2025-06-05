@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../utils/haptic_utils.dart';
 
 /// A reusable stats card component for displaying metric data with change indicators.
 ///
@@ -149,7 +150,10 @@ class StatsCardStyle2 extends StatelessWidget {
       return Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () {
+            HapticUtils.lightTap();
+            onTap?.call();
+          },
           borderRadius: BorderRadius.circular(16),
           child: container,
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/haptic_utils.dart';
 
 /// A reusable metric card component for displaying simple metrics with icons.
 ///
@@ -83,7 +84,10 @@ class MetricCardStyle2 extends StatelessWidget {
     
     if (onTap != null) {
       return InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticUtils.lightTap();
+          onTap!();
+        },
         borderRadius: BorderRadius.circular(16),
         child: content,
       );

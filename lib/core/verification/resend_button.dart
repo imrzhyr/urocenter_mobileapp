@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/theme.dart';
+import '../utils/haptic_utils.dart';
 
 /// A reusable button for resending verification codes with a timer
 class ResendButton extends StatelessWidget {
@@ -24,7 +25,12 @@ class ResendButton extends StatelessWidget {
           ),
         ),
         TextButton(
-          onPressed: remainingSeconds == 0 ? onResend : null,
+          onPressed: remainingSeconds == 0 
+            ? () {
+                HapticUtils.lightTap();
+                onResend();
+              } 
+            : null,
           child: Text(
             remainingSeconds == 0 
               ? 'Resend Code' 

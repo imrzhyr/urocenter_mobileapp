@@ -19,6 +19,11 @@
   "Duration: {0}": "Duration: {0}",
   "Video Call": "Video Call",
   "Audio Call": "Audio Call",
+  "Settings": "Settings",
+  "Notifications": "Notifications",
+  "Medical History": "Medical History",
+  "My Documents": "My Documents",
+  "Help & Support": "Help & Support",
   "language": {
     "english": "English",
     "arabic": "Arabic"

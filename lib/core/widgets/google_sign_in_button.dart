@@ -5,6 +5,7 @@ import 'package:easy_localization/easy_localization.dart';
 import '../theme/theme.dart';
 import '../../providers/service_providers.dart';
 import 'package:urocenter/core/utils/logger.dart';
+import '../utils/haptic_utils.dart';
 
 class GoogleSignInButton extends ConsumerStatefulWidget {
   final Function(bool) onSignInStarted;
@@ -26,6 +27,7 @@ class _GoogleSignInButtonState extends ConsumerState<GoogleSignInButton> {
   bool _isLoading = false;
 
   Future<void> _handleGoogleSignIn() async {
+    HapticUtils.lightTap();
     setState(() => _isLoading = true);
     widget.onSignInStarted(true);
     

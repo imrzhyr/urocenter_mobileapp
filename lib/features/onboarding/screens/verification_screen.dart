@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
@@ -261,7 +261,7 @@ class _OnboardingCompletionScreenState extends ConsumerState<OnboardingCompletio
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // --- Replace Lottie with Animated Icon --- 
+              // Animated Success Icon
               ScaleTransition(
                 scale: scaleAnimation,
                 child: FadeTransition(
@@ -282,13 +282,6 @@ class _OnboardingCompletionScreenState extends ConsumerState<OnboardingCompletio
                   ),
                 ),
               )
-              // Lottie.asset(
-              //   'assets/animations/success.json',
-              //   width: 200,
-              //   height: 200,
-              //   repeat: false,
-              //   controller: _animationController,
-              // ),
             ],
           ),
         ),
