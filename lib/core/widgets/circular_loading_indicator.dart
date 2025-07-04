@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/theme.dart';
 
 /// A standardized circular loading indicator used across the app
 /// This matches the style used in the sign-in/AnimatedButton for consistency

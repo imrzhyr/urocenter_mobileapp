@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/theme/theme.dart';
 import '../../../app/routes.dart';
 import '../../../core/utils/dialog_utils.dart';
-import '../widgets/admin_stat_card.dart';
-import '../widgets/admin_recent_users.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/haptic_utils.dart';
 import 'package:urocenter/core/utils/logger.dart';
@@ -20,7 +15,6 @@ import '../../../core/services/call_service.dart';
 import 'admin_consultations_screen.dart';
 import 'admin_data_screen.dart';
 import 'admin_calls_screen.dart';
-import '../../user/screens/settings_screen.dart';
 import '../../../core/widgets/navigation_bar_style2.dart';
 
 // --- Callback Definition ---

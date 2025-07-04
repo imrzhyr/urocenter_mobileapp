@@ -1,4 +1,3 @@
-import 'package:logger/logger.dart';
 import 'logger.dart';
 
 /// Error handler utility

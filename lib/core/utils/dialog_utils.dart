@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
-import '../theme/theme.dart';
 import 'haptic_utils.dart';
 
 /// Utility class for displaying dialogs with consistent styling

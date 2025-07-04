@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.2
+  sdk: ^3.8.1
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -37,7 +37,7 @@ dependencies:
   # Core
   cupertino_icons: ^1.0.2
   flutter_riverpod: ^2.3.6      # State management
-  go_router: ^10.0.0            # Navigation
+  go_router: ^15.1.2            # Navigation
   equatable: ^2.0.5
   
   # UI
@@ -48,7 +48,7 @@ dependencies:
   shimmer: ^3.0.0               # Loading effects
   smooth_page_indicator: ^1.1.0 # Pagination indicators
   flutter_staggered_animations: ^1.1.1  # Staggered list animations
-  skeletonizer: ^0.5.0
+  skeletonizer: ^2.0.1
 
   # Backend / Auth
   shared_preferences: ^2.2.2    # Local storage
@@ -59,7 +59,7 @@ dependencies:
   firebase_auth: ^5.5.2 
   # <<< ADD Notification Dependencies >>>
   firebase_messaging: ^15.0.3 # For FCM push notifications
-  flutter_local_notifications: ^17.2.1 # For foreground notifications
+  flutter_local_notifications: ^19.2.1 # For foreground notifications
   # <<< END Notification Dependencies >>>
   
   # Media
@@ -68,14 +68,14 @@ dependencies:
   path_provider: ^2.1.2         # File system access
   path: ^1.8.3                # Path manipulation
   flutter_sound: ^9.2.13        # Audio recording/playback
-  audioplayers: ^5.2.1          # Alternative audio playback
+  audioplayers: ^6.4.0          # Alternative audio playback
   
   # Helpers
   uuid: ^4.5.1                  # UUID generation
   timeago: ^3.6.0               # Relative time
-  flutter_hooks: ^0.20.4        # React-like hooks
-  device_info_plus: ^9.1.1      # Device information
-  connectivity_plus: ^5.0.2     # Network connectivity
+  flutter_hooks: ^0.21.2        # React-like hooks
+  device_info_plus: ^11.4.0      # Device information
+  connectivity_plus: ^6.1.4     # Network connectivity
   logger: ^2.0.2+1              # Logging utility
   easy_localization: ^3.0.2     # Enhanced localization
   permission_handler: ^12.0.0+1   # Permission management
@@ -95,16 +95,16 @@ dependencies:
   image_gallery_saver: ^2.0.3 # <<< ADD image_gallery_saver >>>
   agora_rtc_engine: ^6.3.0 # Replaced flutter_webrtc with agora_rtc_engine
   url_launcher: ^6.3.1
-  app_links: ^3.4.3 # For deep link handling with FIB Payment (replacement for uni_links)
+  app_links: ^6.4.0 # For deep link handling with FIB Payment (replacement for uni_links)
   overlay_support: ^2.1.0
-  fl_chart: ^0.65.0  # Added chart package for analytics visualizations
+  fl_chart: ^1.0.0  # Added chart package for analytics visualizations
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
   build_runner: ^2.4.7          # Code generation
-  flutter_launcher_icons: ^0.13.1 # Added launcher icons package
+  flutter_launcher_icons: ^0.14.3 # Added launcher icons package
 
 # Configuration for flutter_launcher_icons
 flutter_launcher_icons:
@@ -133,7 +133,7 @@ flutter:
     - assets/images/flags/
     - assets/images/payments/
     - assets/images/profile_pictures/
-
+    - assets/animations/
     - assets/icons/
     - assets/translations/
     - assets/fonts/

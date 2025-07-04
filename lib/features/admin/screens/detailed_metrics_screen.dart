@@ -236,7 +236,7 @@ class DetailedMetricsScreen extends ConsumerWidget {
                                 ],
                                 lineTouchData: LineTouchData(
                                   touchTooltipData: LineTouchTooltipData(
-                                    tooltipBgColor: isDarkMode 
+                                    getTooltipColor: (touchedSpot) => isDarkMode 
                                         ? theme.colorScheme.surfaceContainerHighest 
                                         : theme.colorScheme.background,
                                     getTooltipItems: (touchedSpots) {

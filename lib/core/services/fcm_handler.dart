@@ -1,5 +1,4 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:urocenter/app/routes.dart';
 import 'package:urocenter/core/utils/logger.dart';

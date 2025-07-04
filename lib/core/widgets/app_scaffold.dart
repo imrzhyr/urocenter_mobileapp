@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/theme.dart';
 
 /// A consistent scaffold implementation for the app
 /// 

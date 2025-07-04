@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
@@ -261,19 +260,17 @@ class _OnboardingCompletionScreenState extends ConsumerState<OnboardingCompletio
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Animated Success Icon
+              // Animated success icon
               ScaleTransition(
                 scale: scaleAnimation,
                 child: FadeTransition(
                   opacity: fadeAnimation, 
                   child: Icon(
                     Icons.check_circle_rounded,
-                    // Use theme secondary color
-                    color: theme.colorScheme.secondary, // Use a success color
-                    size: 150, // Adjust size as needed
+                    color: theme.colorScheme.secondary,
+                    size: 150,
                     shadows: [
                       BoxShadow(
-                        // Use theme secondary with alpha
                         color: theme.colorScheme.secondary.withAlpha(77),
                         blurRadius: 15,
                         spreadRadius: 5,

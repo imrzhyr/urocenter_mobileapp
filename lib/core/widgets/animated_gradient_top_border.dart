@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import '../theme/theme.dart'; // Assuming theme file exists
+import 'package:flutter/material.dart'; // Assuming theme file exists
 
 class AnimatedGradientTopBorder extends StatefulWidget {
   final double height;

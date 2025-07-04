@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/theme.dart';
 import '../utils/haptic_utils.dart';
 
 /// An animated button that provides visual feedback on press

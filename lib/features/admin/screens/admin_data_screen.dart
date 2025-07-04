@@ -1338,7 +1338,7 @@ class _AdminDataScreenState extends ConsumerState<AdminDataScreen> with SingleTi
                         ],
                         lineTouchData: LineTouchData(
                           touchTooltipData: LineTouchTooltipData(
-                            tooltipBgColor: isDarkMode 
+                            getTooltipColor: (touchedSpot) => isDarkMode 
                                 ? theme.colorScheme.surfaceContainerHighest 
                                 : theme.colorScheme.background,
                             getTooltipItems: (touchedSpots) {

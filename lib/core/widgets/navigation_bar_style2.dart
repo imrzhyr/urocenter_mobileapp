@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 import '../utils/haptic_utils.dart';
 import 'animated_gradient_top_border.dart';
 

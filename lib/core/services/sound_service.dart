@@ -1,5 +1,4 @@
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../utils/logger.dart';
 
@@ -30,7 +29,7 @@ class SoundService {
     try {
       // Set global audio player settings
       AudioPlayer.global.setAudioContext(
-        const AudioContext(
+        AudioContext(
           android: AudioContextAndroid(
             audioMode: AndroidAudioMode.normal,
             contentType: AndroidContentType.music,
@@ -38,10 +37,10 @@ class SoundService {
           ),
           iOS: AudioContextIOS(
             category: AVAudioSessionCategory.playback,
-            options: [
+            options: {
               AVAudioSessionOptions.mixWithOthers,
               AVAudioSessionOptions.duckOthers,
-            ],
+            },
           ),
         ),
       );

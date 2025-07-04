@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/theme.dart';
 import 'circular_loading_indicator.dart';
 
 /// A custom animated loading indicator
